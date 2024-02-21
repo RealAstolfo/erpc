@@ -1,0 +1,11 @@
+.cache
+.import
+*.nfs*
+*.json
+*.plist
+*.out
+*.clangd
+*.o
+*.a
+*.spv
+compile_commands.json
