@@ -14,8 +14,19 @@ LDFLAGS = $(LIB) -O3
 rpc-node.o:
 	${CXX} ${CXXFLAGS} -c src/rpc_node.cpp -o $@
 
+erpc-test.o:
+	${CXX} ${CXXFLAGS} -c builds/test/erpc_test.cpp -o $@
 
-all: 
+erpc-test-client.o:
+	${CXX} ${CXXFLAGS} -c builds/test/erpc_test_client.cpp -o $@
+
+erpc-test: rpc-node.o erpc-test.o
+	${CXX} ${CXXFLAGS} $^ -o $@
+
+erpc-test-client: rpc-node.o erpc-test-client.o
+	${CXX} ${CXXFLAGS} $^ -o $@
+
+all: erpc-test erpc-test-client
 
 clean:
 	-rm -f *.o

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <any>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <future>
@@ -21,59 +22,54 @@
 
 #include <bitsery/adapter/buffer.h>
 #include <bitsery/bitsery.h>
+#include <bitsery/ext/std_tuple.h>
+#include <bitsery/traits/array.h>
+#include <bitsery/traits/string.h>
+#include <bitsery/traits/vector.h>
 
-#include "bitsery/deserializer.h"
-#include "bitsery/serializer.h"
 #include "tcp.hpp"
-
-template <typename Func> class function_traits;
-template <typename Result, typename... Args>
-class function_traits<Result(Args...)> {
-public:
-  using arguments = std::tuple<Args...>;
-};
 
 /*
   One must pick a socket type for "T", a later example will show a TCP example.
  */
-template <typename T> struct rpc_node : T {
+template <typename T> struct rpc_node {
 
   /*
     By default, a node should not serve calls.
     Parameter "ep" in the context of binding is a local address.
    */
   rpc_node(const endpoint ep, const int max_incoming_connections = 0) {
-    T::bind(ep);
+    internal.bind(ep);
 
     if (max_incoming_connections)
-      T::listen(max_incoming_connections);
+      internal.listen(max_incoming_connections);
   }
 
-  ~rpc_node() { T::close(); }
+  ~rpc_node() { internal.close(); }
 
-  template <typename Func>
+  template <typename Func, typename... Args>
   void register_function(std::string func_name, Func function) {
-    lookup.emplace(std::move(func_name), [function](T *from,
-                                                    std::vector<uint8_t> &buf) {
-      using output_adapter = bitsery::OutputBufferAdapter<std::vector<uint8_t>>;
-      using input_adapter = bitsery::InputBufferAdapter<std::vector<uint8_t>>;
-      using func_args = function_traits<Func>::arguments;
+    using output_adapter = bitsery::OutputBufferAdapter<std::vector<uint8_t>>;
+    using input_adapter = bitsery::InputBufferAdapter<std::vector<uint8_t>>;
+    using result_t = std::invoke_result_t<Func, Args...>;
+    using func_args = std::tuple<Args...>;
 
-      func_args args;
-      auto state = bitsery::quickDeserialization<input_adapter>(
-          {std::begin(buf), sizeof(args)}, args);
+    lookup.emplace(
+        std::move(func_name), [function](T *from, std::vector<uint8_t> &buf) {
+          func_args arguments;
+          auto state = bitsery::quickDeserialization<input_adapter>(
+              {std::begin(buf), std::end(buf)}, arguments);
 
-      assert(state.first == bitsery::ReaderError::NoError && state.second);
+          assert(state.first == bitsery::ReaderError::NoError && state.second);
 
-      if constexpr (std::is_void_v<decltype(function())>) {
-        std::apply(function, args);
-      } else {
-        auto result = std::apply(function, args);
-        auto written_size =
+          if constexpr (std::is_void_v<result_t>) {
+            std::apply(function, arguments);
+          } else {
+            auto result = std::apply(function, arguments);
             bitsery::quickSerialization<output_adapter>(buf, result);
-        from->send(buf);
-      }
-    });
+            from->send(buf);
+          }
+        });
   }
 
   /*
@@ -82,13 +78,18 @@ template <typename T> struct rpc_node : T {
 
     Will return if it was successful or not.
    */
-  bool subscribe(const endpoint e) { return T::connect(e); }
+  bool subscribe(const endpoint e) {
+    T socket;
+    socket.connect(e);
+    providers.emplace_back(socket);
+    return true;
+  }
 
   /*
     Accept a node trying to subscribe to your services.
     This blocks until a node tries to subscribe.
    */
-  void accept() { subscribers.emplace_back(T::accept()); }
+  void accept() { subscribers.emplace_back(internal.accept()); }
 
   /*
     Invoke a registered function "std::string func_name" on the target node "T
@@ -98,11 +99,11 @@ template <typename T> struct rpc_node : T {
    */
   template <typename Func, typename... Args>
   std::invoke_result_t<Func, Args...>
-  call(T const *target, std::string func_name, Args &&...args) {
+  call(T *const target, std::string func_name, Args &&...args) {
     using output_adapter = bitsery::OutputBufferAdapter<std::vector<uint8_t>>;
     using input_adapter = bitsery::InputBufferAdapter<std::vector<uint8_t>>;
-    using func_args = function_traits<Func>::arguments;
     using return_t = std::invoke_result_t<Func, Args...>;
+    using func_args = std::tuple<Args...>;
 
     auto iter = lookup.find(func_name);
     if (iter == std::end(lookup))
@@ -112,26 +113,29 @@ template <typename T> struct rpc_node : T {
 
     const auto function = *iter;
     const func_args fargs = std::make_tuple(std::forward<Args>(args)...);
-    const auto written_size =
-        bitsery::quickSerialization<output_adapter>(buf, fargs);
 
-    // we must send the function name
-    const size_t str_len = target->send(func_name);
+    auto written_size = bitsery::quickSerialization<output_adapter>(buf, fargs);
+
+    // we must send the function name by sending the length of it first.
+    std::variant<uint32_t, std::array<char, sizeof(uint32_t)>> bytes;
+    std::get<uint32_t>(bytes) = func_name.length();
+    target->send(std::get<std::array<char, sizeof(uint32_t)>>(bytes));
+    target->send(func_name);
 
     // after, lets send the arguments
-    const size_t len = target->send(buf);
+    target->send(buf);
 
-    if constexpr (std::is_void_v<return_t>) {
-      // ensures lower layer attempts to read exactly enough.
-      buf.resize(sizeof(return_t));
-      const size_t recv_len = target->receive(buf);
-      return_t ret_val;
-      const auto state = bitsery::quickDeserialization<input_adapter>(
-          {std::begin(buf), recv_len}, ret_val);
-      assert(state.first == bitsery::ReaderError::NoError && state.second);
-      return ret_val;
-    } else
+    if constexpr (std::is_void_v<return_t>)
       return;
+
+    // ensures lower layer attempts to read exactly enough.
+    std::variant<return_t, std::array<char, sizeof(return_t)>> return_val;
+    const size_t recv_len = target->receive(
+        std::get<std::array<char, sizeof(return_t)>>(return_val));
+    const auto state = bitsery::quickDeserialization<input_adapter>(
+        {std::begin(buf), recv_len}, std::get<return_t>(return_val));
+    assert(state.first == bitsery::ReaderError::NoError && state.second);
+    return std::get<return_t>(return_val);
   }
 
   /*
@@ -139,20 +143,38 @@ template <typename T> struct rpc_node : T {
     serialize result, send. This function will also block until there is
     something to respond to.
    */
-  void respond(T const *to) {
+  void respond(T *const to) {
     using output_adapter = bitsery::OutputBufferAdapter<std::vector<uint8_t>>;
-    using input_adapter = bitsery::InputBufferAdapter<std::vector<uint8_t>>;
-    std::vector<uint8_t> buf;
-    ssize_t len = to->receive(buf);
+    std::variant<uint32_t, std::array<char, sizeof(uint32_t)>> str_len;
+    to->receive_some(std::get<std::array<char, sizeof(uint32_t)>>(str_len));
 
     std::string func_name;
-    auto state = bitsery::quickDeserialization<input_adapter>(
-        {std::begin(buf), len}, func_name);
+    func_name.resize(std::get<uint32_t>(str_len));
+    to->receive_some(func_name);
+    auto iter = lookup.find(func_name);
+    if (iter == std::end(lookup))
+      throw std::runtime_error("Function not registered");
+
+    std::vector<uint8_t> buf;
+    ssize_t bytes = 0;
+    do {
+      bytes = to->receive(buf);
+    } while (bytes > 0);
+
+    auto return_val = iter(to, buf);
+    buf.clear();
+    auto written_size =
+        bitsery::quickSerialization<output_adapter>(buf, return_val);
+    to->send(buf);
+    return;
   }
 
   std::unordered_map<std::string, std::function<void(std::vector<uint8_t> &)>>
       lookup;
   std::vector<T> subscribers;
+  std::vector<T> providers;
+
+  T internal;
 };
 
 #endif
