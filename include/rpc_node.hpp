@@ -1,24 +1,19 @@
 #ifndef ERPC_RPC_NODE_HPP
 #define ERPC_RPC_NODE_HPP
 
-#include <algorithm>
-#include <any>
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <functional>
-#include <future>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <string_view>
 #include <sys/types.h>
 #include <tuple>
 #include <type_traits>
-#include <typeinfo>
 #include <unordered_map>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <bitsery/adapter/buffer.h>
@@ -27,12 +22,19 @@
 #include <bitsery/traits/string.h>
 #include <bitsery/traits/vector.h>
 
+#include "bitsery/deserializer.h"
+#include "bitsery/serializer.h"
 #include "tcp.hpp"
 
 /*
   One must pick a socket type for "T", a later example will show a TCP example.
  */
-template <typename T> struct rpc_node {
+struct rpc_node {
+
+  union un {
+    size_t len;
+    std::array<std::byte, sizeof(size_t)> bytes;
+  };
 
   /*
     By default, a node should not serve calls.
@@ -49,28 +51,45 @@ template <typename T> struct rpc_node {
 
   template <typename Func, typename... Args>
   void register_function(std::string func_name, Func function) {
-    using output_adapter = bitsery::OutputBufferAdapter<std::vector<std::byte>>;
-    using input_adapter = bitsery::InputBufferAdapter<std::vector<std::byte>>;
+    using buffer = std::vector<std::byte>;
+    using reader = bitsery::InputBufferAdapter<buffer>;
+    using writer = bitsery::OutputBufferAdapter<buffer>;
+
+    using type_serializer = bitsery::Serializer<writer>;
+    using type_deserializer = bitsery::Deserializer<reader>;
+
     using result_t = std::invoke_result_t<Func, Args...>;
     using func_args = std::tuple<Args...>;
 
-    lookup.emplace(std::move(func_name), [function](
-                                             T *from,
-                                             std::vector<std::byte> &buf) {
+    lookup.emplace(func_name, [&function](tcp_socket *from, buffer &buf) {
       func_args arguments;
-      auto state = bitsery::quickDeserialization<input_adapter>(
-          {std::begin(buf), std::end(buf)}, arguments);
-      assert(state.first == bitsery::ReaderError::NoError && state.second);
+      {
+        auto deserializer = std::unique_ptr<type_deserializer>(
+            new type_deserializer{std::begin(buf), buf.size()});
+
+        // TODO: verify that the deserializer is actually saving to the
+        // arguments tuple
+        std::apply(
+            [&deserializer](auto &&...vals) {
+              (deserializer->value<sizeof(vals)>(vals), ...);
+            },
+            arguments);
+        // deserializer->ext(arguments, bitsery::ext::StdTuple<Args...>{});
+      }
 
       if constexpr (std::is_void_v<result_t>) {
         std::apply(function, arguments);
       } else {
-        std::variant<size_t, std::array<std::byte, sizeof(size_t)>> byte_len;
+        auto serializer =
+            std::unique_ptr<type_serializer>(new type_serializer{buf});
+        un byte_len;
+        auto result = std::apply(function, arguments);
 
-        auto result = std::make_tuple(std::apply(function, arguments));
-        std::get<size_t>(byte_len) =
-            bitsery::quickSerialization<output_adapter>(buf, result);
-        from->send(std::get<std::array<std::byte, sizeof(size_t)>>(byte_len));
+        std::cout << "Request Result: " << result << std::endl;
+        serializer->value<sizeof(result)>(result);
+        // serializer->ext(result, bitsery::ext::StdTuple<result_t>{});
+        byte_len.len = serializer->adapter().writtenBytesCount();
+        from->send(byte_len.bytes);
         from->send(buf);
       }
     });
@@ -83,9 +102,9 @@ template <typename T> struct rpc_node {
     Will return if it was successful or not.
    */
   bool subscribe(const endpoint e) {
-    T socket;
+    tcp_socket socket;
     socket.connect(e);
-    providers.emplace_back(socket);
+    providers.emplace_back(std::move(socket));
     return true;
   }
 
@@ -103,49 +122,52 @@ template <typename T> struct rpc_node {
    */
   template <typename Func, typename... Args>
   std::invoke_result_t<Func, Args...>
-  call(T *const target, std::string func_name, Args &&...args) {
-    using output_adapter = bitsery::OutputBufferAdapter<std::vector<std::byte>>;
-    using input_adapter = bitsery::InputBufferAdapter<std::vector<std::byte>>;
+  call(tcp_socket *const target, std::string func_name, Args &&...args) {
+    using buffer = std::vector<std::byte>;
+    using reader = bitsery::InputBufferAdapter<buffer>;
+    using writer = bitsery::OutputBufferAdapter<buffer>;
+
+    using type_serializer = bitsery::Serializer<writer>;
+    using type_deserializer = bitsery::Deserializer<reader>;
+
     using return_t = std::invoke_result_t<Func, Args...>;
-    using func_args = std::tuple<Args...>;
 
     auto iter = lookup.find(func_name);
     if (iter == std::end(lookup))
       throw std::runtime_error("Function not registered");
 
-    std::vector<std::byte> buf;
+    buffer buf;
 
-    const auto function = *iter;
-    const func_args fargs = std::make_tuple(args...);
+    un byte_len;
+    auto serializer =
+        std::unique_ptr<type_serializer>(new type_serializer{buf});
 
-    std::variant<size_t, std::array<std::byte, sizeof(size_t)>> byte_len;
-    std::get<size_t>(byte_len) =
-        bitsery::quickSerialization<output_adapter>(buf, func_name);
+    serializer->text<sizeof(std::string::value_type)>(func_name,
+                                                      max_func_name_len);
+    std::apply(
+        [&serializer](auto &&...vals) {
+          (serializer->value<sizeof(vals)>(vals), ...);
+        },
+        std::make_tuple(args...));
 
-    target->send(std::get<std::array<std::byte, sizeof(size_t)>>(byte_len));
+    // serializer->ext(fargs, bitsery::ext::StdTuple<Args...>{});
+    byte_len.len = serializer->adapter().writtenBytesCount();
+    target->send(byte_len.bytes);
     target->send(buf);
-    buf.clear();
+    // if constexpr (std::is_void_v<return_t>)
+    //   return;
 
-    std::get<size_t>(byte_len) =
-        bitsery::quickSerialization<output_adapter>(buf, fargs);
-    target->send(std::get<std::array<std::byte, sizeof(size_t)>>(byte_len));
-    target->send(buf);
-    buf.clear();
-
-    if constexpr (std::is_void_v<return_t>)
-      return;
-
-    target->receive_some(
-        std::get<std::array<std::byte, sizeof(size_t)>>(byte_len));
-    buf.resize(std::get<size_t>(byte_len));
+    target->receive_some(byte_len.bytes);
+    buf.resize(byte_len.len);
     target->receive_some(buf);
 
-    std::tuple<return_t> return_val;
-    auto state = bitsery::quickDeserialization<input_adapter>(
-        {std::begin(buf), std::size(buf)}, return_val);
-    assert(state.first == bitsery::ReaderError::NoError && state.second);
+    return_t return_val;
+    auto deserializer = std::unique_ptr<type_deserializer>(
+        new type_deserializer{std::begin(buf), byte_len.len});
 
-    return std::get<0>(return_val);
+    deserializer->value<sizeof(return_val)>(return_val);
+    // deserializer->ext(return_val, bitsery::ext::StdTuple<return_t>{});
+    return return_val;
   }
 
   /*
@@ -153,47 +175,46 @@ template <typename T> struct rpc_node {
     serialize result, send. This function will also block until there is
     something to respond to.
    */
-  void respond(T *const to) {
-    using output_adapter = bitsery::OutputBufferAdapter<std::vector<std::byte>>;
-    using input_adapter = bitsery::InputBufferAdapter<std::vector<std::byte>>;
-    std::variant<size_t, std::array<std::byte, sizeof(size_t)>> byte_len;
+  void respond(tcp_socket *to) {
+    using buffer = std::vector<std::byte>;
+    using reader = bitsery::InputBufferAdapter<buffer>;
+    using type_deserializer = bitsery::Deserializer<reader>;
 
-    std::vector<std::byte> buf;
+    un byte_len;
+    buffer buf;
 
-    to->receive_some(std::get<std::array<std::byte, sizeof(size_t)>>(byte_len));
-
-    buf.resize(std::get<size_t>(byte_len));
+    to->receive_some(byte_len.bytes);
+    buf.resize(byte_len.len);
     to->receive_some(buf);
 
     std::string func_name;
-    auto state = bitsery::quickDeserialization<input_adapter>(
-        {std::begin(buf), std::size(buf)}, func_name);
-    assert(state.first == bitsery::ReaderError::NoError && state.second);
+    auto deserializer = std::unique_ptr<type_deserializer>(
+        new type_deserializer{std::begin(buf), byte_len.len});
+
+    deserializer->text<sizeof(std::string::value_type)>(func_name,
+                                                        max_func_name_len);
 
     auto iter = lookup.find(func_name);
     if (iter == std::end(lookup))
       throw std::runtime_error("Function not registered");
 
-    to->receive_some(std::get<std::array<std::byte, sizeof(size_t)>>(byte_len));
-    buf.resize(std::get<size_t>(byte_len));
-    to->receive_some(buf);
+    auto func = iter->second;
 
-    auto return_val = iter(to, buf);
-    buf.clear();
-
-    std::get<size_t>(byte_len) = bitsery::quickSerialization<output_adapter>(
-        buf, std::make_tuple(return_val));
-    to->send(std::get<std::array<std::byte, sizeof(size_t)>>(byte_len));
-    to->send(buf);
+    buf.erase(std::begin(buf),
+              std::begin(buf) + deserializer->adapter().currentReadPos());
+    func(to, buf);
     return;
   }
 
-  std::unordered_map<std::string, std::function<void(std::vector<std::byte> &)>>
+  std::unordered_map<
+      std::string,
+      std::function<void(tcp_socket *from, std::vector<std::byte> &buf)>>
       lookup;
-  std::vector<T> subscribers;
-  std::vector<T> providers;
+  std::vector<tcp_socket> subscribers;
+  std::vector<tcp_socket> providers;
 
-  T internal;
+  const size_t max_func_name_len = 64;
+  tcp_socket internal;
 };
 
 #endif
