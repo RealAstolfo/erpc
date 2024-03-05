@@ -7,7 +7,7 @@ int main() {
   tcp_resolver resolver;
   const endpoint e = resolver.resolve("127.0.0.1", "9999").front();
 
-  rpc_node tcp_based_rpc_server(e, 1);
+  rpc_node<tcp_socket> tcp_based_rpc_server(e, 1);
   tcp_based_rpc_server.register_function<decltype(add), int, int>("add", add);
 
   tcp_based_rpc_server.accept();

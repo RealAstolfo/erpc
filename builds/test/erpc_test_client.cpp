@@ -8,7 +8,7 @@ int main() {
   const endpoint serv = resolver.resolve("127.0.0.1", "9999").front();
   const endpoint e = resolver.resolve("127.0.0.1", "9998").front();
 
-  rpc_node tcp_based_rpc_client(e, 0);
+  rpc_node<tcp_socket> tcp_based_rpc_client(e, 0);
   tcp_based_rpc_client.register_function<decltype(add), int, int>("add", add);
 
   tcp_based_rpc_client.subscribe(serv);

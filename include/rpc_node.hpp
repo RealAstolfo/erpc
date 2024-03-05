@@ -29,7 +29,7 @@
 /*
   One must pick a socket type for "T", a later example will show a TCP example.
  */
-struct rpc_node {
+template <typename T> struct rpc_node {
 
   union un {
     size_t len;
@@ -61,7 +61,7 @@ struct rpc_node {
     using result_t = std::invoke_result_t<Func, Args...>;
     using func_args = std::tuple<Args...>;
 
-    lookup.emplace(func_name, [&function](tcp_socket *from, buffer &buf) {
+    lookup.emplace(func_name, [&function](T *from, buffer &buf) {
       func_args arguments;
       {
         auto deserializer = std::unique_ptr<type_deserializer>(
@@ -102,7 +102,7 @@ struct rpc_node {
     Will return if it was successful or not.
    */
   bool subscribe(const endpoint e) {
-    tcp_socket socket;
+    T socket;
     socket.connect(e);
     providers.emplace_back(std::move(socket));
     return true;
@@ -122,7 +122,7 @@ struct rpc_node {
    */
   template <typename Func, typename... Args>
   std::invoke_result_t<Func, Args...>
-  call(tcp_socket *const target, std::string func_name, Args &&...args) {
+  call(T *const target, std::string func_name, Args &&...args) {
     using buffer = std::vector<std::byte>;
     using reader = bitsery::InputBufferAdapter<buffer>;
     using writer = bitsery::OutputBufferAdapter<buffer>;
@@ -175,7 +175,7 @@ struct rpc_node {
     serialize result, send. This function will also block until there is
     something to respond to.
    */
-  void respond(tcp_socket *to) {
+  void respond(T *to) {
     using buffer = std::vector<std::byte>;
     using reader = bitsery::InputBufferAdapter<buffer>;
     using type_deserializer = bitsery::Deserializer<reader>;
@@ -206,15 +206,14 @@ struct rpc_node {
     return;
   }
 
-  std::unordered_map<
-      std::string,
-      std::function<void(tcp_socket *from, std::vector<std::byte> &buf)>>
+  std::unordered_map<std::string,
+                     std::function<void(T *from, std::vector<std::byte> &buf)>>
       lookup;
-  std::vector<tcp_socket> subscribers;
-  std::vector<tcp_socket> providers;
+  std::vector<T> subscribers;
+  std::vector<T> providers;
 
   const size_t max_func_name_len = 64;
-  tcp_socket internal;
+  T internal;
 };
 
 #endif
