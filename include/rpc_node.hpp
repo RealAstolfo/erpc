@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -15,6 +16,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <uuid/uuid.h>
 #include <vector>
 
 #include <bitsery/adapter/buffer.h>
@@ -34,9 +36,14 @@
  */
 template <typename T> struct rpc_node {
 
-  union un {
-    size_t len;
-    std::array<std::byte, sizeof(size_t)> bytes;
+  struct rpc_header {
+    uint32_t seq_num; // starting from 0, etc.
+    uuid_t uid;       // unique to a client, ensures i know who to reply to.
+  };
+
+  template <typename K> union un {
+    K len;
+    std::array<std::byte, sizeof(K)> bytes;
   };
 
   /*
@@ -87,7 +94,7 @@ template <typename T> struct rpc_node {
       } else {
         auto serializer =
             std::unique_ptr<type_serializer>(new type_serializer{buf});
-        un byte_len;
+        un<size_t> byte_len;
         auto result = std::apply(function, arguments);
 
         std::cout << "Request Result: " << result << std::endl;
@@ -143,7 +150,7 @@ template <typename T> struct rpc_node {
 
     buffer buf;
 
-    un byte_len;
+    un<size_t> byte_len;
     auto serializer =
         std::unique_ptr<type_serializer>(new type_serializer{buf});
 
@@ -185,7 +192,7 @@ template <typename T> struct rpc_node {
     using reader = bitsery::InputBufferAdapter<buffer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    un byte_len;
+    un<size_t> byte_len;
     buffer buf;
 
     to->receive_some(byte_len.bytes);
