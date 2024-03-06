@@ -7,6 +7,8 @@ CFLAGS = -march=native -O3 -g -Wall -Wextra -pedantic $(INC)
 CXXFLAGS = -std=c++20 $(CFLAGS)
 LDFLAGS = $(LIB) -O3
 
+SSL = `pkgconf --cflags --libs openssl`
+
 rpc-node.o:
 	${CXX} ${CXXFLAGS} -c src/rpc_node.cpp -o $@
 
@@ -17,10 +19,10 @@ erpc-test-server.o:
 	${CXX} ${CXXFLAGS} -c builds/test/erpc_test_server.cpp -o $@
 
 erpc-test-client: rpc-node.o erpc-test-client.o
-	${CXX} ${CXXFLAGS} $^ -o $@
+	${CXX} ${CXXFLAGS} $^ ${SSL} -o $@
 
 erpc-test-server: rpc-node.o erpc-test-server.o
-	${CXX} ${CXXFLAGS} $^ -o $@
+	${CXX} ${CXXFLAGS} $^ ${SSL} -o $@
 
 all: erpc-test-client erpc-test-server
 

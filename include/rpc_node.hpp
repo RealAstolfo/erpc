@@ -7,6 +7,7 @@
 #include <iterator>
 #include <map>
 #include <memory>
+#include <netinet/in.h>
 #include <stdexcept>
 #include <string_view>
 #include <sys/types.h>
@@ -24,7 +25,9 @@
 
 #include "bitsery/deserializer.h"
 #include "bitsery/serializer.h"
+
 #include "tcp.hpp"
+#include "udp.hpp"
 
 /*
   One must pick a socket type for "T", a later example will show a TCP example.
@@ -41,10 +44,12 @@ template <typename T> struct rpc_node {
     Parameter "ep" in the context of binding is a local address.
    */
   rpc_node(const endpoint ep, const int max_incoming_connections = 0) {
-    internal.bind(ep);
-
-    if (max_incoming_connections)
-      internal.listen(max_incoming_connections);
+    if constexpr (!std::is_same_v<T, udp_socket>) {
+      if (max_incoming_connections) {
+        internal.bind(ep);
+        internal.listen(max_incoming_connections);
+      }
+    }
   }
 
   ~rpc_node() { internal.close(); }
