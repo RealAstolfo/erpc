@@ -34,6 +34,69 @@
 #include "tcp.hpp"
 #include "udp.hpp"
 
+template <typename Sig> struct return_type;
+
+template <typename Ret, typename... Args> struct return_type<Ret(Args...)> {
+  using type = Ret;
+};
+
+template <typename Ret, typename Obj, typename... Args>
+struct return_type<Ret (Obj::*)(Args...)> {
+  using type = Ret;
+};
+
+template <typename Ret, typename Obj, typename... Args>
+struct return_type<Ret (Obj::*)(Args...) const> {
+  using type = Ret;
+};
+
+template <typename Fun>
+concept is_fun = std::is_function_v<Fun>;
+
+template <typename Fun>
+concept is_mem_fun = std::is_member_function_pointer_v<std::decay_t<Fun>>;
+
+template <typename Fun>
+concept is_functor = std::is_class_v<std::decay_t<Fun>> &&
+                     requires(Fun &&t) { &std::decay_t<Fun>::operator(); };
+
+template <is_functor T>
+using return_type_t =
+    typename return_type<decltype(&std::decay_t<T>::operator())>::type;
+
+template <typename Sig> struct signature;
+template <typename Ret, typename... Args> struct signature<Ret(Args...)> {
+  using type = std::tuple<Args...>;
+};
+
+template <typename Ret, typename Obj, typename... Args>
+struct signature<Ret (Obj::*)(Args...)> {
+  using type = std::tuple<Args...>;
+};
+template <typename Ret, typename Obj, typename... Args>
+struct signature<Ret (Obj::*)(Args...) const> {
+  using type = std::tuple<Args...>;
+};
+
+template <is_functor T>
+auto arguments(T &&t)
+    -> signature<decltype(&std::decay_t<T>::operator())>::type;
+
+template <is_functor T>
+auto arguments(const T &t)
+    -> signature<decltype(&std::decay_t<T>::operator())>::type;
+
+// template<is_fun T>
+// auto arguments(T&& t)->signature<T>::type;
+
+template <is_fun T> auto arguments(const T &t) -> signature<T>::type;
+
+template <is_mem_fun T>
+auto arguments(T &&t) -> signature<std::decay_t<T>>::type;
+
+template <is_mem_fun T>
+auto arguments(const T &t) -> signature<std::decay_t<T>>::type;
+
 template <typename obj_or_value>
 auto process_value_or_object(auto &serializer, obj_or_value &&vo)
     -> std::enable_if_t<
@@ -74,8 +137,7 @@ template <> struct erpc_node<tcp_socket> {
 
   ~erpc_node() { internal.close(); }
 
-  template <typename... Args>
-  void register_function(std::string func_name, auto function) {
+  void register_function(auto &function) {
     using buffer = std::vector<std::byte>;
     using reader = bitsery::InputBufferAdapter<buffer>;
     using writer = bitsery::OutputBufferAdapter<buffer>;
@@ -83,9 +145,10 @@ template <> struct erpc_node<tcp_socket> {
     using type_serializer = bitsery::Serializer<writer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    using result_t = std::invoke_result_t<decltype(function), Args...>;
-    using func_args = std::tuple<Args...>;
-
+    using func_args = decltype(arguments(function));
+    using result_t = return_type<decltype(function)>;
+    std::string func_name = std::string(typeid(decltype(function)).name());
+    std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](tcp_socket *from, buffer &buf) {
       func_args arguments;
       {
@@ -111,6 +174,9 @@ template <> struct erpc_node<tcp_socket> {
         buf.resize(byte_len.len);
         from->send(buf);
       }
+
+      // return function so we can extract the type later.
+      return function;
     });
   }
 
@@ -139,9 +205,8 @@ template <> struct erpc_node<tcp_socket> {
 
     Internally, it will serialize the arguments and call on the target remote.
    */
-  template <typename Func, typename... Args>
-  std::invoke_result_t<Func, Args...>
-  call(tcp_socket *target, std::string func_name, Args &&...args) {
+  template <typename... Args>
+  auto call(tcp_socket *target, auto &function, Args &&...args) {
     using buffer = std::vector<std::byte>;
     using reader = bitsery::InputBufferAdapter<buffer>;
     using writer = bitsery::OutputBufferAdapter<buffer>;
@@ -149,19 +214,19 @@ template <> struct erpc_node<tcp_socket> {
     using type_serializer = bitsery::Serializer<writer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    using return_t = std::invoke_result_t<Func, Args...>;
+    auto iter = lookup.find(typeid(function).name());
 
-    auto iter = lookup.find(func_name);
     if (iter == std::end(lookup))
       throw std::runtime_error("Function not registered");
 
+    using result_t = std::invoke_result_t<decltype(function), Args...>;
     buffer buf;
 
     un<size_t> byte_len;
     auto serializer =
         std::unique_ptr<type_serializer>(new type_serializer{buf});
 
-    serializer->text<sizeof(std::string::value_type)>(func_name,
+    serializer->text<sizeof(std::string::value_type)>(iter->first,
                                                       max_func_name_len);
     std::apply(
         [&serializer](auto &&...vals) {
@@ -173,14 +238,14 @@ template <> struct erpc_node<tcp_socket> {
     target->send(byte_len.bytes);
     buf.resize(byte_len.len);
     target->send(buf);
-    if constexpr (std::is_void_v<return_t>)
+    if constexpr (std::is_void_v<result_t>)
       return;
 
     target->receive_some(byte_len.bytes);
     buf.resize(byte_len.len);
     target->receive_some(buf);
 
-    return_t return_val;
+    result_t return_val;
     auto deserializer = std::unique_ptr<type_deserializer>(
         new type_deserializer{std::begin(buf), byte_len.len});
     process_value_or_object(deserializer, return_val);
@@ -219,7 +284,7 @@ template <> struct erpc_node<tcp_socket> {
 
     buf.erase(std::begin(buf),
               std::begin(buf) + deserializer->adapter().currentReadPos());
-    func(to, buf);
+    (func)(to, buf);
     return;
   }
 

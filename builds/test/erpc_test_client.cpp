@@ -33,28 +33,26 @@ int main() {
     const endpoint any;
 
     erpc_node<tcp_socket> tcp_based_rpc_client(any, 0);
-    tcp_based_rpc_client.register_function<int, int>("add", add);
-    tcp_based_rpc_client.register_function<MyStruct>("sum_my_struct",
-                                                     sum_my_struct);
-    tcp_based_rpc_client.register_function<MyStruct>("lamb", lamb);
+    tcp_based_rpc_client.register_function(add);
+    tcp_based_rpc_client.register_function(sum_my_struct);
+    tcp_based_rpc_client.register_function(lamb);
 
     tcp_based_rpc_client.subscribe(serv);
-    int result = tcp_based_rpc_client.call<decltype(add), int, int>(
-        &tcp_based_rpc_client.providers[0], "add", 1, 2);
+    int result = tcp_based_rpc_client.call(&tcp_based_rpc_client.providers[0],
+                                           add, 1, 2);
     std::cout << "Result: " << result << std::endl;
-    result = tcp_based_rpc_client.call<decltype(add), int, int>(
-        &tcp_based_rpc_client.providers[0], "add", 6, 2);
+    result = tcp_based_rpc_client.call(&tcp_based_rpc_client.providers[0], add,
+                                       6, 2);
     std::cout << "Result: " << result << std::endl;
 
     MyStruct ms = {5.5f, 10};
-    std::float_t fresult =
-        tcp_based_rpc_client.call<decltype(sum_my_struct), MyStruct>(
-            &tcp_based_rpc_client.providers[0], "sum_my_struct", std::move(ms));
+    std::float_t fresult = tcp_based_rpc_client.call(
+        &tcp_based_rpc_client.providers[0], sum_my_struct, std::move(ms));
     std::cout << "Result: " << fresult << std::endl;
 
     ms = {12.3456789, 24};
-    ms = tcp_based_rpc_client.call<decltype(lamb), MyStruct>(
-        &tcp_based_rpc_client.providers[0], "lamb", std::move(ms));
+    ms = tcp_based_rpc_client.call(&tcp_based_rpc_client.providers[0], lamb,
+                                   std::move(ms));
     std::cout << "MyStruct.x: " << ms.x << " MyStruct.y: " << (int)ms.y
               << std::endl;
 
