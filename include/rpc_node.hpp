@@ -74,8 +74,8 @@ template <> struct erpc_node<tcp_socket> {
 
   ~erpc_node() { internal.close(); }
 
-  template <typename Func, typename... Args>
-  void register_function(std::string func_name, Func function) {
+  template <typename... Args>
+  void register_function(std::string func_name, auto function) {
     using buffer = std::vector<std::byte>;
     using reader = bitsery::InputBufferAdapter<buffer>;
     using writer = bitsery::OutputBufferAdapter<buffer>;
@@ -83,7 +83,7 @@ template <> struct erpc_node<tcp_socket> {
     using type_serializer = bitsery::Serializer<writer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    using result_t = std::invoke_result_t<Func, Args...>;
+    using result_t = std::invoke_result_t<decltype(function), Args...>;
     using func_args = std::tuple<Args...>;
 
     lookup.emplace(func_name, [function](tcp_socket *from, buffer &buf) {

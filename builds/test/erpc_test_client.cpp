@@ -33,11 +33,10 @@ int main() {
     const endpoint any;
 
     erpc_node<tcp_socket> tcp_based_rpc_client(any, 0);
-    tcp_based_rpc_client.register_function<decltype(add), int, int>("add", add);
-    tcp_based_rpc_client.register_function<decltype(sum_my_struct), MyStruct>(
-        "sum_my_struct", sum_my_struct);
-    tcp_based_rpc_client.register_function<decltype(lamb), MyStruct>("lamb",
-                                                                     lamb);
+    tcp_based_rpc_client.register_function<int, int>("add", add);
+    tcp_based_rpc_client.register_function<MyStruct>("sum_my_struct",
+                                                     sum_my_struct);
+    tcp_based_rpc_client.register_function<MyStruct>("lamb", lamb);
 
     tcp_based_rpc_client.subscribe(serv);
     int result = tcp_based_rpc_client.call<decltype(add), int, int>(
