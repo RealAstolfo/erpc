@@ -2,19 +2,45 @@
 #include "ssl.hpp"
 #include "tcp.hpp"
 #include "udp.hpp"
+#include <cmath>
+
+struct MyStruct {
+  std::float_t x;
+  uint8_t y;
+};
+
+template <typename S> void serialize(S &s, MyStruct &ms) {
+  s.value4b(ms.x);
+  s.value1b(ms.y);
+}
 
 int add(int x, int y) { return x + y; }
 
+std::float_t sum_my_struct(MyStruct ms) { return ms.x + ms.y; }
+
 int main() {
+  const auto lamb = [](MyStruct ms) {
+    ms.x *= 2;
+    ms.y /= 2;
+    return ms;
+  };
+
   std::cout << "Testing TCP..." << std::endl;
   {
     tcp_resolver resolver;
     const endpoint e = resolver.resolve("127.0.0.1", "9999").front();
 
-    rpc_node<tcp_socket> tcp_based_rpc_server(e, 1);
+    erpc_node<tcp_socket> tcp_based_rpc_server(e, 1);
     tcp_based_rpc_server.register_function<decltype(add), int, int>("add", add);
+    tcp_based_rpc_server.register_function<decltype(sum_my_struct), MyStruct>(
+        "sum_my_struct", sum_my_struct);
+    tcp_based_rpc_server.register_function<decltype(lamb), MyStruct>("lamb",
+                                                                     lamb);
 
     tcp_based_rpc_server.accept();
+    tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);
+    tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);
+    tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);
     tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);
     tcp_based_rpc_server.internal.close(); // TODO: Add rpc to announce closure.
   }

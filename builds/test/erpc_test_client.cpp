@@ -2,24 +2,63 @@
 #include "ssl.hpp"
 #include "tcp.hpp"
 #include "udp.hpp"
+#include <cmath>
+#include <cstdint>
+
+struct MyStruct {
+  std::float_t x;
+  uint8_t y;
+};
+
+template <typename S> void serialize(S &s, MyStruct &ms) {
+  s.value4b(ms.x);
+  s.value1b(ms.y);
+}
 
 int add(int x, int y) { return x + y; }
 
+std::float_t sum_my_struct(MyStruct ms) { return ms.x + ms.y; }
+
 int main() {
+  const auto lamb = [](MyStruct ms) {
+    ms.x *= 2;
+    ms.y /= 2;
+    return ms;
+  };
+
   std::cout << "Testing TCP..." << std::endl;
   {
     tcp_resolver resolver;
     const endpoint serv = resolver.resolve("127.0.0.1", "9999").front();
     const endpoint any;
 
-    rpc_node<tcp_socket> tcp_based_rpc_client(any, 0);
+    erpc_node<tcp_socket> tcp_based_rpc_client(any, 0);
     tcp_based_rpc_client.register_function<decltype(add), int, int>("add", add);
+    tcp_based_rpc_client.register_function<decltype(sum_my_struct), MyStruct>(
+        "sum_my_struct", sum_my_struct);
+    tcp_based_rpc_client.register_function<decltype(lamb), MyStruct>("lamb",
+                                                                     lamb);
 
     tcp_based_rpc_client.subscribe(serv);
     int result = tcp_based_rpc_client.call<decltype(add), int, int>(
         &tcp_based_rpc_client.providers[0], "add", 1, 2);
-
     std::cout << "Result: " << result << std::endl;
+    result = tcp_based_rpc_client.call<decltype(add), int, int>(
+        &tcp_based_rpc_client.providers[0], "add", 6, 2);
+    std::cout << "Result: " << result << std::endl;
+
+    MyStruct ms = {5.5f, 10};
+    std::float_t fresult =
+        tcp_based_rpc_client.call<decltype(sum_my_struct), MyStruct>(
+            &tcp_based_rpc_client.providers[0], "sum_my_struct", std::move(ms));
+    std::cout << "Result: " << fresult << std::endl;
+
+    ms = {12.3456789, 24};
+    ms = tcp_based_rpc_client.call<decltype(lamb), MyStruct>(
+        &tcp_based_rpc_client.providers[0], "lamb", std::move(ms));
+    std::cout << "MyStruct.x: " << ms.x << " MyStruct.y: " << (int)ms.y
+              << std::endl;
+
     tcp_based_rpc_client.internal
         .close(); // TODO: make an rpc that announces closure.
   }
