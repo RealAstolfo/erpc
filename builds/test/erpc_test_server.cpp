@@ -46,20 +46,18 @@ int main() {
   // TODO: In order to support SSL rpc, i need the ability to generate my own
   // cert and keys. or ability to load them
 
-  // std::cout << "Testing SSL..." << std::endl;
-  // {
-  //   ssl_resolver resolver;
-  //   const endpoint e = resolver.resolve("127.0.0.1", "10000").front();
+  std::cout << "Testing SSL..." << std::endl;
+  {
+    ssl_resolver resolver;
+    const endpoint e = resolver.resolve("127.0.0.1", "10001").front();
 
-  //   rpc_node<ssl_socket> ssl_based_rpc_server(e, 1);
-  //   ssl_based_rpc_server.register_function<decltype(add), int, int>("add",
-  //   add);
+    erpc_node<ssl_socket> ssl_based_rpc_server(e, 1);
+    ssl_based_rpc_server.register_function(add);
 
-  //   ssl_based_rpc_server.accept();
-  //   ssl_based_rpc_server.respond(&ssl_based_rpc_server.subscribers[0]);
-  //   ssl_based_rpc_server.internal.close(); // TODO: Add rpc to announce
-  //   closure.
-  // }
+    ssl_based_rpc_server.accept();
+    ssl_based_rpc_server.respond(&ssl_based_rpc_server.subscribers[0]);
+    ssl_based_rpc_server.internal.close(); // TODO: Add rpc to announce closure.
+  }
 
   // TODO: In order to support UDP rpc, i need to write an RPC header to
   // standardize the means of communication, since currently i leverage the fact

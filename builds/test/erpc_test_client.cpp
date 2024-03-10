@@ -63,23 +63,24 @@ int main() {
   // TODO: In order to support SSL rpc, i need the ability to generate my own
   // cert and keys. or ability to load them
 
-  // std::cout << "Testing SSL..." << std::endl;
-  // {
-  //   ssl_resolver resolver;
-  //   const endpoint serv = resolver.resolve("127.0.0.1", "10001").front();
-  //   const endpoint any;
-  //   rpc_node<ssl_socket> ssl_based_rpc_client(any, 0);
-  //   ssl_based_rpc_client.register_function<decltype(add), int, int>("add",
-  //   add);
+  // hardcode sleep, since our test has the server launch, it may need some time
+  sleep(3);
+  std::cout << "Testing SSL..." << std::endl;
+  {
+    ssl_resolver resolver;
+    const endpoint serv = resolver.resolve("127.0.0.1", "10001").front();
+    const endpoint any;
+    erpc_node<ssl_socket> ssl_based_rpc_client(any, 0);
+    ssl_based_rpc_client.register_function(add);
 
-  //   ssl_based_rpc_client.subscribe(serv);
-  //   int result = ssl_based_rpc_client.call<decltype(add), int, int>(
-  //       &ssl_based_rpc_client.providers[0], "add", 1, 2);
+    ssl_based_rpc_client.subscribe(serv);
+    int result = ssl_based_rpc_client.call(&ssl_based_rpc_client.providers[0],
+                                           add, 1, 2);
 
-  //   std::cout << "Result: " << result << std::endl;
-  //   ssl_based_rpc_client.internal
-  //       .close(); // TODO: make an rpc that announces closure.
-  // }
+    std::cout << "Result: " << result << std::endl;
+    ssl_based_rpc_client.internal
+        .close(); // TODO: make an rpc that announces closure.
+  }
 
   // TODO: In order to support UDP rpc, i need to write an RPC header to
   // standardize the means of communication, since currently i leverage the fact
