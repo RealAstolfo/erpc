@@ -19,6 +19,8 @@ int add(int x, int y) { return x + y; }
 
 std::float_t sum_my_struct(MyStruct ms) { return ms.x + ms.y; }
 
+std::string hello() { return "world!"; }
+
 int main() {
   const auto lamb = [](MyStruct ms) {
     ms.x *= 2;
@@ -36,6 +38,7 @@ int main() {
     tcp_based_rpc_client.register_function(add);
     tcp_based_rpc_client.register_function(sum_my_struct);
     tcp_based_rpc_client.register_function(lamb);
+    tcp_based_rpc_client.register_function(hello);
 
     tcp_based_rpc_client.subscribe(serv);
     int result = tcp_based_rpc_client.call(&tcp_based_rpc_client.providers[0],
@@ -54,6 +57,11 @@ int main() {
     ms = tcp_based_rpc_client.call(&tcp_based_rpc_client.providers[0], lamb,
                                    std::move(ms));
     std::cout << "MyStruct.x: " << ms.x << " MyStruct.y: " << (int)ms.y
+              << std::endl;
+
+    std::cout << "Hello "
+              << tcp_based_rpc_client.call(&tcp_based_rpc_client.providers[0],
+                                           hello)
               << std::endl;
 
     tcp_based_rpc_client.internal
@@ -81,6 +89,26 @@ int main() {
     ssl_based_rpc_client.internal
         .close(); // TODO: make an rpc that announces closure.
   }
+
+  // hardcode sleep, since our test has the server launch, it may need some time
+  // sleep(3);
+  // std::cout << "Testing SSL..." << std::endl;
+  // {
+  //   i2p_resolver resolver;
+  //   const endpoint serv = resolver.resolve("127.0.0.1", "10001").front();
+  //   const endpoint any;
+  //   erpc_node<i2p_socket> i2p_based_rpc_client(any, 0);
+  //   i2p_based_rpc_client.register_function(add);
+
+  //   i2p_based_rpc_client.subscribe(serv);
+  //   int result =
+  //   i2p_based_rpc_client.call(&i2p_based_rpc_client.providers[0],
+  //                                          add, 1, 2);
+
+  //   std::cout << "Result: " << result << std::endl;
+  //   i2p_based_rpc_client.internal
+  //       .close(); // TODO: make an rpc that announces closure.
+  // }
 
   // TODO: In order to support UDP rpc, i need to write an RPC header to
   // standardize the means of communication, since currently i leverage the fact

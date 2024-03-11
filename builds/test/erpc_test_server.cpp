@@ -18,6 +18,8 @@ int add(int x, int y) { return x + y; }
 
 std::float_t sum_my_struct(MyStruct ms) { return ms.x + ms.y; }
 
+std::string hello() { return "world!"; }
+
 int main() {
   const auto lamb = [](MyStruct ms) {
     ms.x *= 2;
@@ -34,8 +36,10 @@ int main() {
     tcp_based_rpc_server.register_function(add);
     tcp_based_rpc_server.register_function(sum_my_struct);
     tcp_based_rpc_server.register_function(lamb);
+    tcp_based_rpc_server.register_function(hello);
 
     tcp_based_rpc_server.accept();
+    tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);
     tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);
     tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);
     tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);

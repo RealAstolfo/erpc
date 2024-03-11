@@ -97,19 +97,28 @@ auto arguments(T &&t) -> signature<std::decay_t<T>>::type;
 template <is_mem_fun T>
 auto arguments(const T &t) -> signature<std::decay_t<T>>::type;
 
-template <typename obj_or_value>
-auto process_value_or_object(auto &serializer, obj_or_value &&vo)
+template <typename Serializer, typename T>
+auto process_value_or_object(Serializer &serializer, T &&value)
     -> std::enable_if_t<
-        std::is_class_v<std::remove_reference_t<obj_or_value>>> {
-  serializer->object(std::forward<obj_or_value>(vo));
+        std::is_same_v<std::remove_reference_t<T>, std::string>> {
+  serializer->template text<sizeof(std::string::value_type)>(
+      std::forward<T>(value), 8096);
 }
 
-template <typename obj_or_value>
-auto process_value_or_object(auto &serializer, obj_or_value &&vo)
+template <typename Serializer, typename T>
+auto process_value_or_object(Serializer &serializer, T &&value)
     -> std::enable_if_t<
-        !std::is_class_v<std::remove_reference_t<obj_or_value>>> {
-  serializer->template value<sizeof(obj_or_value)>(
-      std::forward<obj_or_value>(vo));
+        !std::is_same_v<std::remove_reference_t<T>, std::string> &&
+        std::is_class_v<std::remove_reference_t<T>>> {
+  serializer->object(std::forward<T>(value));
+}
+
+template <typename Serializer, typename T>
+auto process_value_or_object(Serializer &serializer, T &&value)
+    -> std::enable_if_t<
+        !std::is_same_v<std::remove_reference_t<T>, std::string> &&
+        !std::is_class_v<std::remove_reference_t<T>>> {
+  serializer->template value<sizeof(T)>(std::forward<T>(value));
 }
 
 /*
