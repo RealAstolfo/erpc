@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <netinet/in.h>
@@ -79,30 +80,30 @@ struct signature<Ret (Obj::*)(Args...) const> {
 };
 
 template <is_functor T>
-auto arguments(T &&t)
+auto arguments_t(T &&t)
     -> signature<decltype(&std::decay_t<T>::operator())>::type;
 
 template <is_functor T>
-auto arguments(const T &t)
+auto arguments_t(const T &t)
     -> signature<decltype(&std::decay_t<T>::operator())>::type;
 
 // template<is_fun T>
-// auto arguments(T&& t)->signature<T>::type;
+// auto arguments_t(T&& t)->signature<T>::type;
 
-template <is_fun T> auto arguments(const T &t) -> signature<T>::type;
-
-template <is_mem_fun T>
-auto arguments(T &&t) -> signature<std::decay_t<T>>::type;
+template <is_fun T> auto arguments_t(const T &t) -> signature<T>::type;
 
 template <is_mem_fun T>
-auto arguments(const T &t) -> signature<std::decay_t<T>>::type;
+auto arguments_t(T &&t) -> signature<std::decay_t<T>>::type;
+
+template <is_mem_fun T>
+auto arguments_t(const T &t) -> signature<std::decay_t<T>>::type;
 
 template <typename Serializer, typename T>
 auto process_value_or_object(Serializer &serializer, T &&value)
     -> std::enable_if_t<
         std::is_same_v<std::remove_reference_t<T>, std::string>> {
   serializer->template text<sizeof(std::string::value_type)>(
-      std::forward<T>(value), 8096);
+      std::forward<T>(value), std::numeric_limits<std::size_t>::max());
 }
 
 template <typename Serializer, typename T>
@@ -154,12 +155,12 @@ template <> struct erpc_node<tcp_socket> {
     using type_serializer = bitsery::Serializer<writer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    using func_args = decltype(arguments(function));
+    using func_args = decltype(arguments_t(function));
     using result_t = return_type<decltype(function)>;
     std::string func_name = std::string(typeid(decltype(function)).name());
     std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](tcp_socket *from, buffer &buf) {
-      func_args arguments;
+      func_args arguments_t;
       {
         auto deserializer = std::unique_ptr<type_deserializer>(
             new type_deserializer{std::begin(buf), buf.size()});
@@ -167,16 +168,16 @@ template <> struct erpc_node<tcp_socket> {
             [&deserializer](auto &&...vals) {
               (process_value_or_object(deserializer, vals), ...);
             },
-            arguments);
+            arguments_t);
       }
 
       if constexpr (std::is_void_v<result_t>) {
-        std::apply(function, arguments);
+        std::apply(function, arguments_t);
       } else {
         auto serializer =
             std::unique_ptr<type_serializer>(new type_serializer{buf});
         un<size_t> byte_len;
-        auto result = std::apply(function, arguments);
+        auto result = std::apply(function, arguments_t);
         process_value_or_object(serializer, result);
         byte_len.len = serializer->adapter().writtenBytesCount();
         from->send(byte_len.bytes);
@@ -212,7 +213,7 @@ template <> struct erpc_node<tcp_socket> {
     Invoke a registered function "std::string func_name" on the target node "T
     *target" using the parameters for the function "Args &&...args"
 
-    Internally, it will serialize the arguments and call on the target remote.
+    Internally, it will serialize the arguments_t and call on the target remote.
    */
   template <typename... Args>
   auto call(tcp_socket *target, auto &function, Args &&...args) {
@@ -304,7 +305,7 @@ template <> struct erpc_node<tcp_socket> {
   std::vector<tcp_socket> subscribers;
   std::vector<tcp_socket> providers;
 
-  const size_t max_func_name_len = 64;
+  const size_t max_func_name_len = 1024;
   tcp_socket internal;
 };
 
@@ -336,12 +337,12 @@ template <> struct erpc_node<ssl_socket> {
     using type_serializer = bitsery::Serializer<writer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    using func_args = decltype(arguments(function));
+    using func_args = decltype(arguments_t(function));
     using result_t = return_type<decltype(function)>;
     std::string func_name = std::string(typeid(decltype(function)).name());
     std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](ssl_socket *from, buffer &buf) {
-      func_args arguments;
+      func_args arguments_t;
       {
         auto deserializer = std::unique_ptr<type_deserializer>(
             new type_deserializer{std::begin(buf), buf.size()});
@@ -349,16 +350,16 @@ template <> struct erpc_node<ssl_socket> {
             [&deserializer](auto &&...vals) {
               (process_value_or_object(deserializer, vals), ...);
             },
-            arguments);
+            arguments_t);
       }
 
       if constexpr (std::is_void_v<result_t>) {
-        std::apply(function, arguments);
+        std::apply(function, arguments_t);
       } else {
         auto serializer =
             std::unique_ptr<type_serializer>(new type_serializer{buf});
         un<size_t> byte_len;
-        auto result = std::apply(function, arguments);
+        auto result = std::apply(function, arguments_t);
         process_value_or_object(serializer, result);
         byte_len.len = serializer->adapter().writtenBytesCount();
         from->send(byte_len.bytes);
@@ -394,7 +395,7 @@ template <> struct erpc_node<ssl_socket> {
     Invoke a registered function "std::string func_name" on the target node "T
     *target" using the parameters for the function "Args &&...args"
 
-    Internally, it will serialize the arguments and call on the target remote.
+    Internally, it will serialize the arguments_t and call on the target remote.
    */
   template <typename... Args>
   auto call(ssl_socket *target, auto &function, Args &&...args) {
@@ -486,7 +487,7 @@ template <> struct erpc_node<ssl_socket> {
   std::vector<ssl_socket> subscribers;
   std::vector<ssl_socket> providers;
 
-  const size_t max_func_name_len = 64;
+  const size_t max_func_name_len = 1024;
   ssl_socket internal;
 };
 
@@ -536,28 +537,28 @@ template <> struct erpc_node<ssl_socket> {
 
 //     lookup.emplace(func_name, [&function, self = &this->internal](
 //                                   endpoint *from, buffer &buf) {
-//       func_args arguments;
+//       func_args arguments_t;
 //       {
 //         auto deserializer = std::unique_ptr<type_deserializer>(
 //             new type_deserializer{std::begin(buf), buf.size()});
 
 //         // TODO: verify that the deserializer is actually saving to the
-//         // arguments tuple
+//         // arguments_t tuple
 //         std::apply(
 //             [&deserializer](auto &&...vals) {
 //               (deserializer->value<sizeof(vals)>(vals), ...);
 //             },
-//             arguments);
-//         // deserializer->ext(arguments, bitsery::ext::StdTuple<Args...>{});
+//             arguments_t);
+//         // deserializer->ext(arguments_t, bitsery::ext::StdTuple<Args...>{});
 //       }
 
 //       if constexpr (std::is_void_v<result_t>) {
-//         std::apply(function, arguments);
+//         std::apply(function, arguments_t);
 //       } else {
 //         auto serializer =
 //             std::unique_ptr<type_serializer>(new type_serializer{buf});
 //         un<rpc_header> header;
-//         auto result = std::apply(function, arguments);
+//         auto result = std::apply(function, arguments_t);
 
 //         std::cout << "Request Result: " << result << std::endl;
 //         serializer->value<sizeof(result)>(result);
