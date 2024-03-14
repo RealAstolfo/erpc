@@ -157,7 +157,7 @@ template <> struct erpc_node<tcp_socket> {
 
     using func_args = decltype(arguments_t(function));
     using result_t = return_type<decltype(function)>;
-    std::string func_name = std::string(typeid(decltype(function)).name());
+    std::string func_name = std::to_string(typeid(func_args).hash_code());
     std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](tcp_socket *from, buffer &buf) {
       func_args arguments_t;
@@ -224,7 +224,9 @@ template <> struct erpc_node<tcp_socket> {
     using type_serializer = bitsery::Serializer<writer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    auto iter = lookup.find(typeid(function).name());
+    using func_args = decltype(arguments_t(function));
+    std::string func_name = std::to_string(typeid(func_args).hash_code());
+    auto iter = lookup.find(func_name);
 
     if (iter == std::end(lookup))
       throw std::runtime_error("Function not registered");
@@ -339,7 +341,7 @@ template <> struct erpc_node<ssl_socket> {
 
     using func_args = decltype(arguments_t(function));
     using result_t = return_type<decltype(function)>;
-    std::string func_name = std::string(typeid(decltype(function)).name());
+    std::string func_name = std::to_string(typeid(func_args).hash_code());
     std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](ssl_socket *from, buffer &buf) {
       func_args arguments_t;
@@ -406,7 +408,10 @@ template <> struct erpc_node<ssl_socket> {
     using type_serializer = bitsery::Serializer<writer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    auto iter = lookup.find(typeid(function).name());
+    using func_args = decltype(arguments_t(function));
+
+    std::string func_name = std::to_string(typeid(func_args).hash_code());
+    auto iter = lookup.find(func_name);
 
     if (iter == std::end(lookup))
       throw std::runtime_error("Function not registered");
