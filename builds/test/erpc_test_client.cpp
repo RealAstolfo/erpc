@@ -89,16 +89,37 @@ int main() {
   std::cout << "Testing HTTP..." << std::endl;
   {
     http_resolver resolver;
-    const endpoint serv = resolver.resolve("127.0.0.1", "10001").front();
+    const endpoint serv = resolver.resolve("127.0.0.1", "10002").front();
     const endpoint any;
     erpc_node<http_socket> http_based_rpc_client(any, 0);
     http_based_rpc_client.register_function(add);
+    http_based_rpc_client.register_function(sum_my_struct);
+    http_based_rpc_client.register_function(lamb);
+    http_based_rpc_client.register_function(hello);
 
     http_based_rpc_client.subscribe(serv);
     int result = http_based_rpc_client.call(&http_based_rpc_client.providers[0],
                                             add, 1, 2);
-
     std::cout << "Result: " << result << std::endl;
+    result = http_based_rpc_client.call(&http_based_rpc_client.providers[0],
+                                        add, 6, 2);
+    std::cout << "Result: " << result << std::endl;
+
+    MyStruct ms = {5.5f, 10};
+    std::float_t fresult = http_based_rpc_client.call(
+        &http_based_rpc_client.providers[0], sum_my_struct, std::move(ms));
+    std::cout << "Result: " << fresult << std::endl;
+
+    ms = {12.3456789, 24};
+    ms = http_based_rpc_client.call(&http_based_rpc_client.providers[0], lamb,
+                                    std::move(ms));
+    std::cout << "MyStruct.x: " << ms.x << " MyStruct.y: " << (int)ms.y
+              << std::endl;
+
+    std::cout << "Hello "
+              << http_based_rpc_client.call(&http_based_rpc_client.providers[0],
+                                            hello)
+              << std::endl;
   }
 
   // hardcode sleep, since our test has the server launch, it may need some time

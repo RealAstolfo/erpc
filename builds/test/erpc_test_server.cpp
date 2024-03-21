@@ -64,12 +64,19 @@ int main() {
   std::cout << "Testing HTTP..." << std::endl;
   {
     http_resolver resolver;
-    const endpoint e = resolver.resolve("127.0.0.1", "10001").front();
+    const endpoint e = resolver.resolve("127.0.0.1", "10002").front();
 
     erpc_node<http_socket> http_based_rpc_server(e, 1);
     http_based_rpc_server.register_function(add);
+    http_based_rpc_server.register_function(sum_my_struct);
+    http_based_rpc_server.register_function(lamb);
+    http_based_rpc_server.register_function(hello);
 
     http_based_rpc_server.accept();
+    http_based_rpc_server.respond(&http_based_rpc_server.subscribers[0]);
+    http_based_rpc_server.respond(&http_based_rpc_server.subscribers[0]);
+    http_based_rpc_server.respond(&http_based_rpc_server.subscribers[0]);
+    http_based_rpc_server.respond(&http_based_rpc_server.subscribers[0]);
     http_based_rpc_server.respond(&http_based_rpc_server.subscribers[0]);
   }
 
