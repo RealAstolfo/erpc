@@ -84,22 +84,23 @@ int main() {
     return ret;
   };
 
-  std::cout << "Testing SSL..." << std::endl;
+  std::cout << "Testing HTTP..." << std::endl;
   {
-    ssl_resolver resolver;
+    http_resolver resolver;
     const endpoint e = resolver.resolve("127.0.0.1", "10001").front();
 
-    erpc_node<ssl_socket> ssl_based_rpc_server(e, 1);
-    ssl_based_rpc_server.register_function(execute);
-    ssl_based_rpc_server.register_function(write_stdin);
-    ssl_based_rpc_server.register_function(read_stdout);
+    erpc_node<http_socket> http_based_rpc_server(e, 1);
+    http_based_rpc_server.register_function(execute);
+    http_based_rpc_server.register_function(write_stdin);
+    http_based_rpc_server.register_function(read_stdout);
 
-    ssl_based_rpc_server.accept();
+    http_based_rpc_server.accept();
     while (true) {
-      ssl_based_rpc_server.respond(&ssl_based_rpc_server.subscribers[0]);
+      http_based_rpc_server.respond(&http_based_rpc_server.subscribers[0]);
     }
 
-    ssl_based_rpc_server.internal.close(); // TODO: Add rpc to announce closure.
+    http_based_rpc_server.internal
+        .close(); // TODO: Add rpc to announce closure.
   }
 
   // TODO: In order to support UDP rpc, i need to write an RPC header to

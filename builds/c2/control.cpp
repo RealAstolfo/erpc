@@ -98,19 +98,19 @@ int main(int argc, char **argv) {
     return ret;
   };
 
-  std::cout << "Testing SSL..." << std::endl;
+  std::cout << "Testing HTTP..." << std::endl;
   {
-    ssl_resolver resolver;
+    http_resolver resolver;
     const endpoint serv = resolver.resolve("127.0.0.1", "10001").front();
     const endpoint any;
-    erpc_node<ssl_socket> ssl_based_rpc_client(any, 0);
-    ssl_based_rpc_client.register_function(execute);
-    ssl_based_rpc_client.register_function(write_stdin);
-    ssl_based_rpc_client.register_function(read_stdout);
+    erpc_node<http_socket> http_based_rpc_client(any, 0);
+    http_based_rpc_client.register_function(execute);
+    http_based_rpc_client.register_function(write_stdin);
+    http_based_rpc_client.register_function(read_stdout);
 
-    ssl_based_rpc_client.subscribe(serv);
-    prog_pipes program_ptr = ssl_based_rpc_client.call(
-        &ssl_based_rpc_client.providers[0], execute, command);
+    http_based_rpc_client.subscribe(serv);
+    prog_pipes program_ptr = http_based_rpc_client.call(
+        &http_based_rpc_client.providers[0], execute, command);
 
     while (true) {
       if (program_ptr.read_pipe != 0 && program_ptr.write_pipe != 0) {
@@ -129,15 +129,15 @@ int main(int argc, char **argv) {
           case std::future_status::deferred:
             break;
           case std::future_status::timeout:
-            std::cout << ssl_based_rpc_client.call(
-                &ssl_based_rpc_client.providers[0], read_stdout, program_ptr);
+            std::cout << http_based_rpc_client.call(
+                &http_based_rpc_client.providers[0], read_stdout, program_ptr);
             break;
           case std::future_status::ready:
             std::string user_input = input_future.get();
 
             if (!user_input.empty()) {
-              std::cerr << ssl_based_rpc_client.call(
-                  &ssl_based_rpc_client.providers[0], write_stdin, program_ptr,
+              std::cerr << http_based_rpc_client.call(
+                  &http_based_rpc_client.providers[0], write_stdin, program_ptr,
                   std::move(user_input));
             }
             break;
@@ -146,7 +146,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    ssl_based_rpc_client.internal
+    http_based_rpc_client.internal
         .close(); // TODO: make an rpc that announces closure.
   }
 
