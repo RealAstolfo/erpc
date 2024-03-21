@@ -63,9 +63,6 @@ int main() {
               << tcp_based_rpc_client.call(&tcp_based_rpc_client.providers[0],
                                            hello)
               << std::endl;
-
-    tcp_based_rpc_client.internal
-        .close(); // TODO: make an rpc that announces closure.
   }
 
   // TODO: In order to support SSL rpc, i need the ability to generate my own
@@ -86,8 +83,22 @@ int main() {
                                            add, 1, 2);
 
     std::cout << "Result: " << result << std::endl;
-    ssl_based_rpc_client.internal
-        .close(); // TODO: make an rpc that announces closure.
+  }
+
+  sleep(3);
+  std::cout << "Testing HTTP..." << std::endl;
+  {
+    http_resolver resolver;
+    const endpoint serv = resolver.resolve("127.0.0.1", "10001").front();
+    const endpoint any;
+    erpc_node<http_socket> http_based_rpc_client(any, 0);
+    http_based_rpc_client.register_function(add);
+
+    http_based_rpc_client.subscribe(serv);
+    int result = http_based_rpc_client.call(&http_based_rpc_client.providers[0],
+                                            add, 1, 2);
+
+    std::cout << "Result: " << result << std::endl;
   }
 
   // hardcode sleep, since our test has the server launch, it may need some time

@@ -44,7 +44,6 @@ int main() {
     tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);
     tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);
     tcp_based_rpc_server.respond(&tcp_based_rpc_server.subscribers[0]);
-    tcp_based_rpc_server.internal.close(); // TODO: Add rpc to announce closure.
   }
 
   // TODO: In order to support SSL rpc, i need the ability to generate my own
@@ -60,7 +59,18 @@ int main() {
 
     ssl_based_rpc_server.accept();
     ssl_based_rpc_server.respond(&ssl_based_rpc_server.subscribers[0]);
-    ssl_based_rpc_server.internal.close(); // TODO: Add rpc to announce closure.
+  }
+
+  std::cout << "Testing HTTP..." << std::endl;
+  {
+    http_resolver resolver;
+    const endpoint e = resolver.resolve("127.0.0.1", "10001").front();
+
+    erpc_node<http_socket> http_based_rpc_server(e, 1);
+    http_based_rpc_server.register_function(add);
+
+    http_based_rpc_server.accept();
+    http_based_rpc_server.respond(&http_based_rpc_server.subscribers[0]);
   }
 
   // TODO: In order to support UDP rpc, i need to write an RPC header to
