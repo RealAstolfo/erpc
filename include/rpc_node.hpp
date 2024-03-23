@@ -533,7 +533,7 @@ template <> struct erpc_node<http_socket> {
       func_args arguments_t;
       {
         auto deserializer = std::unique_ptr<type_deserializer>(
-            new type_deserializer{std::begin(buf), buf.size()});
+            new type_deserializer{std::begin(buf), std::size(buf)});
         std::apply(
             [&deserializer](auto &&...vals) {
               (process_value_or_object(deserializer, vals), ...);
@@ -544,15 +544,12 @@ template <> struct erpc_node<http_socket> {
       if constexpr (std::is_void_v<result_t>) {
         std::apply(function, arguments_t);
       } else {
+        buf.clear();
         auto serializer =
             std::unique_ptr<type_serializer>(new type_serializer{buf});
-        un<size_t> byte_len;
         auto result = std::apply(function, arguments_t);
         process_value_or_object(serializer, result);
-        byte_len.len = serializer->adapter().writtenBytesCount();
-        from->post(byte_len.bytes);
-        buf.resize(byte_len.len);
-        from->post(buf);
+        from->respond(buf);
       }
 
       // return function so we can extract the type later.
@@ -604,7 +601,6 @@ template <> struct erpc_node<http_socket> {
     using result_t = std::invoke_result_t<decltype(function), Args...>;
     buffer buf;
 
-    un<size_t> byte_len;
     auto serializer =
         std::unique_ptr<type_serializer>(new type_serializer{buf});
 
@@ -616,20 +612,13 @@ template <> struct erpc_node<http_socket> {
         },
         std::make_tuple(args...));
 
-    byte_len.len = serializer->adapter().writtenBytesCount();
-    target->post(byte_len.bytes);
-    buf.resize(byte_len.len);
-    target->post(buf);
+    buffer receive = target->request<buffer, buffer>(buf);
     if constexpr (std::is_void_v<result_t>)
       return;
 
-    target->receive(byte_len.bytes);
-    buf.resize(byte_len.len);
-    target->receive(buf);
-
     result_t return_val;
     auto deserializer = std::unique_ptr<type_deserializer>(
-        new type_deserializer{std::begin(buf), byte_len.len});
+        new type_deserializer{std::begin(receive), std::size(receive)});
     process_value_or_object(deserializer, return_val);
     return return_val;
   }
@@ -644,16 +633,12 @@ template <> struct erpc_node<http_socket> {
     using reader = bitsery::InputBufferAdapter<buffer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    un<size_t> byte_len;
     buffer buf;
-
-    to->receive(byte_len.bytes);
-    buf.resize(byte_len.len);
     to->receive(buf);
 
     std::string func_name;
     auto deserializer = std::unique_ptr<type_deserializer>(
-        new type_deserializer{std::begin(buf), byte_len.len});
+        new type_deserializer{std::begin(buf), std::size(buf)});
 
     deserializer->text<sizeof(std::string::value_type)>(func_name,
                                                         max_func_name_len);
@@ -666,6 +651,7 @@ template <> struct erpc_node<http_socket> {
 
     buf.erase(std::begin(buf),
               std::begin(buf) + deserializer->adapter().currentReadPos());
+    // buf is modified.
     (func)(to, buf);
     return;
   }

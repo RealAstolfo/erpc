@@ -8,6 +8,7 @@ CXXFLAGS = -std=c++20 $(CFLAGS)
 LDFLAGS = $(LIB) -O3
 
 SSL = `pkgconf --cflags --libs openssl`
+ZLIB = `pkgconf --cflags --libs zlib`
 # I2P = -L./vendors/i2pd -Wl,-Bstatic -li2pd -Wl,-Bdynamic -lssl -lcrypto -lz -lboost_system -lboost_program_options -lboost_filesystem
 
 # i2p.o:
@@ -26,22 +27,22 @@ erpc-test-server.o:
 	${CXX} ${CXXFLAGS} -c builds/test/erpc_test_server.cpp -o $@
 
 erpc-test-client: rpc-node.o erpc-test-client.o # i2p.o vendors/enet/vendors/i2pd/libi2pd.a
-	${CXX} ${CXXFLAGS} $^ ${SSL} ${I2P} -o $@
+	${CXX} ${CXXFLAGS} $^ ${SSL} ${I2P} ${ZLIB} -o $@
 
 erpc-test-server: rpc-node.o erpc-test-server.o # i2p.o vendors/enet/vendors/i2pd/libi2pd.a
-	${CXX} ${CXXFLAGS} $^ ${SSL} ${I2P} -o $@
+	${CXX} ${CXXFLAGS} $^ ${SSL} ${I2P} ${ZLIB} -o $@
 
 control.o:
 	${CXX} ${CXXFLAGS} -c builds/c2/control.cpp -o $@
 
 control: rpc-node.o control.o
-	${CXX} ${CXXFLAGS} $^ ${SSL} -o $@
+	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} -o $@
 
 implant.o:
 	${CXX} ${CXXFLAGS} -c builds/c2/implant.cpp -o $@
 
 implant: rpc-node.o implant.o
-	${CXX} ${CXXFLAGS} $^ ${SSL} -o $@
+	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} -o $@
 
 all: erpc-test-client erpc-test-server control implant
 
