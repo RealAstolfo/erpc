@@ -47,5 +47,5 @@ implant: rpc-node.o implant.o
 all: erpc-test-client erpc-test-server control implant
 
 clean:
-	-rm -f *.o
+	-rm -f *.o control implant erpc-test-server erpc-test-client
 	make -C vendors/enet clean
