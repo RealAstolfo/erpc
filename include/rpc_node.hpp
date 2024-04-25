@@ -36,22 +36,6 @@
 #include "tcp.hpp"
 #include "udp.hpp"
 
-template <typename Sig> struct return_type;
-
-template <typename Ret, typename... Args> struct return_type<Ret(Args...)> {
-  using type = Ret;
-};
-
-template <typename Ret, typename Obj, typename... Args>
-struct return_type<Ret (Obj::*)(Args...)> {
-  using type = Ret;
-};
-
-template <typename Ret, typename Obj, typename... Args>
-struct return_type<Ret (Obj::*)(Args...) const> {
-  using type = Ret;
-};
-
 template <typename Fun>
 concept is_fun = std::is_function_v<Fun>;
 
@@ -62,25 +46,24 @@ template <typename Fun>
 concept is_functor = std::is_class_v<std::decay_t<Fun>> &&
                      requires(Fun &&t) { &std::decay_t<Fun>::operator(); };
 
-template <is_functor T>
-using return_type_t =
-    typename return_type<decltype(&std::decay_t<T>::operator())>::type;
-
 template <typename Sig> struct signature;
 template <typename Ret, typename... Args> struct signature<Ret(Args...)> {
   using args = std::tuple<Args...>;
   using type = std::tuple<Ret, Args...>;
+  using ret = Ret;
 };
 
 template <typename Ret, typename Obj, typename... Args>
 struct signature<Ret (Obj::*)(Args...)> {
   using args = std::tuple<Args...>;
   using type = std::tuple<Ret, Args...>;
+  using ret = Ret;
 };
 template <typename Ret, typename Obj, typename... Args>
 struct signature<Ret (Obj::*)(Args...) const> {
   using args = std::tuple<Args...>;
   using type = std::tuple<Ret, Args...>;
+  using ret = Ret;
 };
 
 template <is_functor T>
@@ -120,6 +103,23 @@ auto signature_t(T &&t) -> signature<std::decay_t<T>>::type;
 
 template <is_mem_fun T>
 auto signature_t(const T &t) -> signature<std::decay_t<T>>::type;
+
+template <is_functor T>
+auto return_t(T &&t) -> signature<decltype(&std::decay_t<T>::operator())>::ret;
+
+template <is_functor T>
+auto return_t(const T &t)
+    -> signature<decltype(&std::decay_t<T>::operator())>::ret;
+
+// template<is_fun T>
+// auto return_t(T&& t)->signature<T>::type;
+
+template <is_fun T> auto return_t(const T &t) -> signature<T>::ret;
+
+template <is_mem_fun T> auto return_t(T &&t) -> signature<std::decay_t<T>>::ret;
+
+template <is_mem_fun T>
+auto return_t(const T &t) -> signature<std::decay_t<T>>::ret;
 
 template <typename Serializer, typename T>
 auto process_value_or_object(Serializer &serializer, T &&value)
@@ -179,7 +179,7 @@ template <> struct erpc_node<tcp_socket> {
     using type_deserializer = bitsery::Deserializer<reader>;
 
     using func_args = decltype(arguments_t(function));
-    using result_t = return_type<decltype(function)>;
+    using result_t = decltype(return_t(function));
     using func_sig = decltype(signature_t(function));
     std::string func_name = typeid(func_sig).name();
     std::cerr << "Registered Function: " << func_name << std::endl;
@@ -365,7 +365,7 @@ template <> struct erpc_node<ssl_socket> {
     using type_deserializer = bitsery::Deserializer<reader>;
 
     using func_args = decltype(arguments_t(function));
-    using result_t = return_type<decltype(function)>;
+    using result_t = decltype(return_t(function));
     using func_sig = decltype(signature_t(function));
     std::string func_name = typeid(func_sig).name();
     std::cerr << "Registered Function: " << func_name << std::endl;
@@ -550,7 +550,7 @@ template <> struct erpc_node<http_socket> {
     using type_deserializer = bitsery::Deserializer<reader>;
 
     using func_args = decltype(arguments_t(function));
-    using result_t = return_type<decltype(function)>;
+    using result_t = decltype(return_t(function));
     using func_sig = decltype(signature_t(function));
     std::string func_name = typeid(func_sig).name();
     std::cerr << "Registered Function: " << func_name << std::endl;
