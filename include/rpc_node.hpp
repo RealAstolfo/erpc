@@ -68,36 +68,58 @@ using return_type_t =
 
 template <typename Sig> struct signature;
 template <typename Ret, typename... Args> struct signature<Ret(Args...)> {
-  using type = std::tuple<Args...>;
+  using args = std::tuple<Args...>;
+  using type = std::tuple<Ret, Args...>;
 };
 
 template <typename Ret, typename Obj, typename... Args>
 struct signature<Ret (Obj::*)(Args...)> {
-  using type = std::tuple<Args...>;
+  using args = std::tuple<Args...>;
+  using type = std::tuple<Ret, Args...>;
 };
 template <typename Ret, typename Obj, typename... Args>
 struct signature<Ret (Obj::*)(Args...) const> {
-  using type = std::tuple<Args...>;
+  using args = std::tuple<Args...>;
+  using type = std::tuple<Ret, Args...>;
 };
 
 template <is_functor T>
 auto arguments_t(T &&t)
-    -> signature<decltype(&std::decay_t<T>::operator())>::type;
+    -> signature<decltype(&std::decay_t<T>::operator())>::args;
 
 template <is_functor T>
 auto arguments_t(const T &t)
-    -> signature<decltype(&std::decay_t<T>::operator())>::type;
+    -> signature<decltype(&std::decay_t<T>::operator())>::args;
 
 // template<is_fun T>
 // auto arguments_t(T&& t)->signature<T>::type;
 
-template <is_fun T> auto arguments_t(const T &t) -> signature<T>::type;
+template <is_fun T> auto arguments_t(const T &t) -> signature<T>::args;
 
 template <is_mem_fun T>
-auto arguments_t(T &&t) -> signature<std::decay_t<T>>::type;
+auto arguments_t(T &&t) -> signature<std::decay_t<T>>::args;
 
 template <is_mem_fun T>
-auto arguments_t(const T &t) -> signature<std::decay_t<T>>::type;
+auto arguments_t(const T &t) -> signature<std::decay_t<T>>::args;
+
+template <is_functor T>
+auto signature_t(T &&t)
+    -> signature<decltype(&std::decay_t<T>::operator())>::type;
+
+template <is_functor T>
+auto signature_t(const T &t)
+    -> signature<decltype(&std::decay_t<T>::operator())>::type;
+
+// template<is_fun T>
+// auto signature_t(T&& t)->signature<T>::type;
+
+template <is_fun T> auto signature_t(const T &t) -> signature<T>::type;
+
+template <is_mem_fun T>
+auto signature_t(T &&t) -> signature<std::decay_t<T>>::type;
+
+template <is_mem_fun T>
+auto signature_t(const T &t) -> signature<std::decay_t<T>>::type;
 
 template <typename Serializer, typename T>
 auto process_value_or_object(Serializer &serializer, T &&value)
@@ -158,7 +180,8 @@ template <> struct erpc_node<tcp_socket> {
 
     using func_args = decltype(arguments_t(function));
     using result_t = return_type<decltype(function)>;
-    std::string func_name = std::to_string(typeid(func_args).hash_code());
+    using func_sig = decltype(signature_t(function));
+    std::string func_name = std::to_string(typeid(func_sig).hash_code());
     std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](tcp_socket *from, buffer &buf) {
       func_args arguments_t;
@@ -225,8 +248,9 @@ template <> struct erpc_node<tcp_socket> {
     using type_serializer = bitsery::Serializer<writer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    using func_args = decltype(arguments_t(function));
-    std::string func_name = std::to_string(typeid(func_args).hash_code());
+    using func_sig = decltype(signature_t(function));
+    std::string func_name = std::to_string(typeid(func_sig).hash_code());
+
     auto iter = lookup.find(func_name);
 
     if (iter == std::end(lookup))
@@ -342,7 +366,8 @@ template <> struct erpc_node<ssl_socket> {
 
     using func_args = decltype(arguments_t(function));
     using result_t = return_type<decltype(function)>;
-    std::string func_name = std::to_string(typeid(func_args).hash_code());
+    using func_sig = decltype(signature_t(function));
+    std::string func_name = std::to_string(typeid(func_sig).hash_code());
     std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](ssl_socket *from, buffer &buf) {
       func_args arguments_t;
@@ -409,9 +434,8 @@ template <> struct erpc_node<ssl_socket> {
     using type_serializer = bitsery::Serializer<writer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    using func_args = decltype(arguments_t(function));
-
-    std::string func_name = std::to_string(typeid(func_args).hash_code());
+    using func_sig = decltype(signature_t(function));
+    std::string func_name = std::to_string(typeid(func_sig).hash_code());
     auto iter = lookup.find(func_name);
 
     if (iter == std::end(lookup))
@@ -527,7 +551,8 @@ template <> struct erpc_node<http_socket> {
 
     using func_args = decltype(arguments_t(function));
     using result_t = return_type<decltype(function)>;
-    std::string func_name = std::to_string(typeid(func_args).hash_code());
+    using func_sig = decltype(signature_t(function));
+    std::string func_name = std::to_string(typeid(func_sig).hash_code());
     std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](http_socket *from, buffer &buf) {
       func_args arguments_t;
@@ -591,8 +616,8 @@ template <> struct erpc_node<http_socket> {
     using type_serializer = bitsery::Serializer<writer>;
     using type_deserializer = bitsery::Deserializer<reader>;
 
-    using func_args = decltype(arguments_t(function));
-    std::string func_name = std::to_string(typeid(func_args).hash_code());
+    using func_sig = decltype(signature_t(function));
+    std::string func_name = std::to_string(typeid(func_sig).hash_code());
     auto iter = lookup.find(func_name);
 
     if (iter == std::end(lookup))
