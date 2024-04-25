@@ -181,7 +181,7 @@ template <> struct erpc_node<tcp_socket> {
     using func_args = decltype(arguments_t(function));
     using result_t = return_type<decltype(function)>;
     using func_sig = decltype(signature_t(function));
-    std::string func_name = std::to_string(typeid(func_sig).hash_code());
+    std::string func_name = typeid(func_sig).name();
     std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](tcp_socket *from, buffer &buf) {
       func_args arguments_t;
@@ -249,7 +249,7 @@ template <> struct erpc_node<tcp_socket> {
     using type_deserializer = bitsery::Deserializer<reader>;
 
     using func_sig = decltype(signature_t(function));
-    std::string func_name = std::to_string(typeid(func_sig).hash_code());
+    std::string func_name = typeid(func_sig).name();
 
     auto iter = lookup.find(func_name);
 
@@ -332,7 +332,7 @@ template <> struct erpc_node<tcp_socket> {
   std::vector<tcp_socket> subscribers;
   std::vector<tcp_socket> providers;
 
-  const size_t max_func_name_len = 1024;
+  const size_t max_func_name_len = 65535;
   tcp_socket internal;
 };
 
@@ -367,7 +367,7 @@ template <> struct erpc_node<ssl_socket> {
     using func_args = decltype(arguments_t(function));
     using result_t = return_type<decltype(function)>;
     using func_sig = decltype(signature_t(function));
-    std::string func_name = std::to_string(typeid(func_sig).hash_code());
+    std::string func_name = typeid(func_sig).name();
     std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](ssl_socket *from, buffer &buf) {
       func_args arguments_t;
@@ -435,7 +435,7 @@ template <> struct erpc_node<ssl_socket> {
     using type_deserializer = bitsery::Deserializer<reader>;
 
     using func_sig = decltype(signature_t(function));
-    std::string func_name = std::to_string(typeid(func_sig).hash_code());
+    std::string func_name = typeid(func_sig).name();
     auto iter = lookup.find(func_name);
 
     if (iter == std::end(lookup))
@@ -517,7 +517,7 @@ template <> struct erpc_node<ssl_socket> {
   std::vector<ssl_socket> subscribers;
   std::vector<ssl_socket> providers;
 
-  const size_t max_func_name_len = 1024;
+  const size_t max_func_name_len = 65535;
   ssl_socket internal;
 };
 
@@ -552,7 +552,7 @@ template <> struct erpc_node<http_socket> {
     using func_args = decltype(arguments_t(function));
     using result_t = return_type<decltype(function)>;
     using func_sig = decltype(signature_t(function));
-    std::string func_name = std::to_string(typeid(func_sig).hash_code());
+    std::string func_name = typeid(func_sig).name();
     std::cerr << "Registered Function: " << func_name << std::endl;
     lookup.emplace(func_name, [function](http_socket *from, buffer &buf) {
       func_args arguments_t;
@@ -617,7 +617,7 @@ template <> struct erpc_node<http_socket> {
     using type_deserializer = bitsery::Deserializer<reader>;
 
     using func_sig = decltype(signature_t(function));
-    std::string func_name = std::to_string(typeid(func_sig).hash_code());
+    std::string func_name = typeid(func_sig).name();
     auto iter = lookup.find(func_name);
 
     if (iter == std::end(lookup))
@@ -688,7 +688,7 @@ template <> struct erpc_node<http_socket> {
   std::vector<http_socket> subscribers;
   std::vector<http_socket> providers;
 
-  const size_t max_func_name_len = 1024;
+  const size_t max_func_name_len = 65535;
   http_socket internal;
 };
 
