@@ -3,14 +3,13 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <limits>
 #include <map>
+#include <md4.h>
 #include <memory>
 #include <netinet/in.h>
-#include <queue>
 #include <stdexcept>
 #include <string_view>
 #include <sys/types.h>
@@ -18,7 +17,6 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
-#include <uuid/uuid.h>
 #include <vector>
 
 #include <bitsery/adapter/buffer.h>
@@ -182,8 +180,16 @@ template <> struct erpc_node<tcp_socket> {
     using result_t = decltype(return_t(function));
     using func_sig = decltype(signature_t(function));
     std::string func_name = typeid(func_sig).name();
-    std::cerr << "Registered Function: " << func_name << std::endl;
-    lookup.emplace(func_name, [function](tcp_socket *from, buffer &buf) {
+
+    MD4_CTX md4ctx;
+    MD4Init(&md4ctx);
+    MD4Update(&md4ctx, (const uint8_t *)func_name.c_str(), func_name.length());
+    char hash[MD4_DIGEST_STRING_LENGTH] = {0};
+    MD4End(&md4ctx, hash);
+    std::string md4hash(std::string_view(hash, strlen(hash)));
+
+    std::cerr << "Registered Function: " << md4hash << std::endl;
+    lookup.emplace(md4hash, [function](tcp_socket *from, buffer &buf) {
       func_args arguments_t;
       {
         auto deserializer = std::unique_ptr<type_deserializer>(
@@ -251,7 +257,13 @@ template <> struct erpc_node<tcp_socket> {
     using func_sig = decltype(signature_t(function));
     std::string func_name = typeid(func_sig).name();
 
-    auto iter = lookup.find(func_name);
+    MD4_CTX md4ctx;
+    MD4Init(&md4ctx);
+    MD4Update(&md4ctx, (const uint8_t *)func_name.c_str(), func_name.length());
+    char hash[MD4_DIGEST_STRING_LENGTH] = {0};
+    MD4End(&md4ctx, hash);
+    std::string md4hash(std::string_view(hash, strlen(hash)));
+    auto iter = lookup.find(md4hash);
 
     if (iter == std::end(lookup))
       throw std::runtime_error("Function not registered");
@@ -368,8 +380,15 @@ template <> struct erpc_node<ssl_socket> {
     using result_t = decltype(return_t(function));
     using func_sig = decltype(signature_t(function));
     std::string func_name = typeid(func_sig).name();
-    std::cerr << "Registered Function: " << func_name << std::endl;
-    lookup.emplace(func_name, [function](ssl_socket *from, buffer &buf) {
+    MD4_CTX md4ctx;
+    MD4Init(&md4ctx);
+    MD4Update(&md4ctx, (const uint8_t *)func_name.c_str(), func_name.length());
+    char hash[MD4_DIGEST_STRING_LENGTH] = {0};
+    MD4End(&md4ctx, hash);
+    std::string md4hash(std::string_view(hash, strlen(hash)));
+
+    std::cerr << "Registered Function: " << md4hash << std::endl;
+    lookup.emplace(md4hash, [function](ssl_socket *from, buffer &buf) {
       func_args arguments_t;
       {
         auto deserializer = std::unique_ptr<type_deserializer>(
@@ -436,7 +455,14 @@ template <> struct erpc_node<ssl_socket> {
 
     using func_sig = decltype(signature_t(function));
     std::string func_name = typeid(func_sig).name();
-    auto iter = lookup.find(func_name);
+    MD4_CTX md4ctx;
+    MD4Init(&md4ctx);
+    MD4Update(&md4ctx, (const uint8_t *)func_name.c_str(), func_name.length());
+    char hash[MD4_DIGEST_STRING_LENGTH] = {0};
+    MD4End(&md4ctx, hash);
+    std::string md4hash(std::string_view(hash, strlen(hash)));
+
+    auto iter = lookup.find(md4hash);
 
     if (iter == std::end(lookup))
       throw std::runtime_error("Function not registered");
@@ -553,8 +579,15 @@ template <> struct erpc_node<http_socket> {
     using result_t = decltype(return_t(function));
     using func_sig = decltype(signature_t(function));
     std::string func_name = typeid(func_sig).name();
-    std::cerr << "Registered Function: " << func_name << std::endl;
-    lookup.emplace(func_name, [function](http_socket *from, buffer &buf) {
+    MD4_CTX md4ctx;
+    MD4Init(&md4ctx);
+    MD4Update(&md4ctx, (const uint8_t *)func_name.c_str(), func_name.length());
+    char hash[MD4_DIGEST_STRING_LENGTH] = {0};
+    MD4End(&md4ctx, hash);
+    std::string md4hash(std::string_view(hash, strlen(hash)));
+
+    std::cerr << "Registered Function: " << md4hash << std::endl;
+    lookup.emplace(md4hash, [function](http_socket *from, buffer &buf) {
       func_args arguments_t;
       {
         auto deserializer = std::unique_ptr<type_deserializer>(
@@ -618,7 +651,13 @@ template <> struct erpc_node<http_socket> {
 
     using func_sig = decltype(signature_t(function));
     std::string func_name = typeid(func_sig).name();
-    auto iter = lookup.find(func_name);
+    MD4_CTX md4ctx;
+    MD4Init(&md4ctx);
+    MD4Update(&md4ctx, (const uint8_t *)func_name.c_str(), func_name.length());
+    char hash[MD4_DIGEST_STRING_LENGTH] = {0};
+    MD4End(&md4ctx, hash);
+    std::string md4hash(std::string_view(hash, strlen(hash)));
+    auto iter = lookup.find(md4hash);
 
     if (iter == std::end(lookup))
       throw std::runtime_error("Function not registered");
