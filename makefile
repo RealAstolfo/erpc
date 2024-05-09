@@ -21,6 +21,9 @@ MD4 = `pkgconf --cflags --libs libmd`
 rpc-node.o:
 	${CXX} ${CXXFLAGS} -c src/rpc_node.cpp -o $@
 
+netvar_server.o:
+	${CXX} ${CXXFLAGS} -c builds/netvar/netvar_server.cpp -o $@
+
 erpc-test-client.o:
 	${CXX} ${CXXFLAGS} -c builds/test/erpc_test_client.cpp -o $@
 
@@ -45,8 +48,12 @@ implant.o:
 implant: rpc-node.o implant.o
 	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} ${MD4} -o $@
 
-all: erpc-test-client erpc-test-server control implant
+netvar_server: netvar_server.o rpc-node.o
+	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} ${MD4} -o $@
+
+
+all: erpc-test-client erpc-test-server control implant netvar_server
 
 clean:
-	-rm -f *.o control implant erpc-test-server erpc-test-client
+	-rm -f *.o control implant erpc-test-server erpc-test-client netvar_server
 	make -C vendors/enet clean

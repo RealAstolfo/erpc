@@ -76,13 +76,17 @@ template <> struct erpc_node<tcp_socket> {
     Parameter "ep" in the context of binding is a local address.
    */
   erpc_node(const endpoint ep, const int max_incoming_connections = 0) {
+    bind(ep, max_incoming_connections);
+  }
+
+  ~erpc_node() { internal.close(); }
+
+  void bind(const endpoint ep, const int max_incoming_connections = 0) {
     if (max_incoming_connections) {
       internal.bind(ep);
       internal.listen(max_incoming_connections);
     }
   }
-
-  ~erpc_node() { internal.close(); }
 
   void register_function(auto &function) {
     using buffer = std::vector<std::byte>;

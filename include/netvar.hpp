@@ -9,11 +9,10 @@
 #include <vector>
 
 #include "rpc_node.hpp"
-#include "tcp.hpp"
 
-template <typename T> struct netvar {
-  static erpc_node<tcp_socket> netvar_transport;
-  static std::unordered_map<std::string, netvar<T> *> netvar_lookup;
+template <typename T, typename SocketType> struct netvar {
+  static erpc_node<SocketType> netvar_transport;
+  static std::unordered_map<std::string, netvar<T, SocketType> *> netvar_lookup;
 
   // implicit getter.
   // T &operator=(const netvar<T> &net_obj) { return net_obj.obj; }
@@ -36,27 +35,18 @@ template <typename T> struct netvar {
     // software-routable ID's to increase effectiveness of synchronization,
     // reduce chances of broadcast looping, capability of multicasting.
 
+    const auto update_obj = [this](T obj, std::string uuid) {
+      auto iter = netvar_lookup.find(uuid);
+      if (iter != std::end(netvar_lookup) && !is_local)
+        this->obj = obj;
+    };
     // set for remotes upstream.
     for (auto &provider : netvar_transport.providers)
-      netvar_transport.call(
-          provider,
-          [this](T obj, std::string uuid) {
-            auto iter = netvar_lookup.find(uuid);
-            if (iter != std::end(netvar_lookup) && !is_local)
-              this->obj = obj;
-          },
-          obj);
+      netvar_transport.call(provider, update_obj, obj);
 
     // set for remotes downstream.
     for (auto &subscriber : netvar_transport.subscribers)
-      netvar_transport.call(
-          subscriber,
-          [this](T obj, std::string uuid) {
-            auto iter = netvar_lookup.find(uuid);
-            if (iter != std::end(netvar_lookup) && !is_local)
-              this->obj = obj;
-          },
-          obj);
+      netvar_transport.call(subscriber, update_obj, obj);
   }
 
   netvar(T &object) {
@@ -76,18 +66,19 @@ template <typename T> struct netvar {
           uuid_generate_random(reinterpret_cast<unsigned char *>(id));
           std::string strid(id, strlen(id));
 
-          netvar<T> *nv = (netvar<T> *)malloc(sizeof(netvar<T>));
+          netvar<T, SocketType> *nv =
+              (netvar<T, SocketType> *)malloc(sizeof(netvar<T, SocketType>));
           nv->object = std::move(obj);
           nv->is_local = false;
           nv->modified = false;
           nv->id = strid;
 
-          netvar<T>::netvar_lookup.emplace(strid, std::move(nv));
+          netvar<T, SocketType>::netvar_lookup.emplace(strid, std::move(nv));
           return strid;
         },
         this->object);
 
-    netvar<T>::netvar_lookup.emplace(id, this);
+    netvar<T, SocketType>::netvar_lookup.emplace(id, this);
   }
 
   // TODO: implement ownership functionality. and a way to verify the
