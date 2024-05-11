@@ -10,6 +10,8 @@ LDFLAGS = $(LIB) -O3
 SSL = `pkgconf --cflags --libs openssl`
 ZLIB = `pkgconf --cflags --libs zlib`
 MD4 = `pkgconf --cflags --libs libmd`
+UUID = `pkgconf --cflags --libs uuid`
+
 # I2P = -L./vendors/i2pd -Wl,-Bstatic -li2pd -Wl,-Bdynamic -lssl -lcrypto -lz -lboost_system -lboost_program_options -lboost_filesystem
 
 # i2p.o:
@@ -23,6 +25,9 @@ rpc-node.o:
 
 netvar_server.o:
 	${CXX} ${CXXFLAGS} -c builds/netvar/netvar_server.cpp -o $@
+
+netvar_client.o:
+	${CXX} ${CXXFLAGS} -c builds/netvar/netvar_client.cpp -o $@
 
 erpc-test-client.o:
 	${CXX} ${CXXFLAGS} -c builds/test/erpc_test_client.cpp -o $@
@@ -49,10 +54,13 @@ implant: rpc-node.o implant.o
 	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} ${MD4} -o $@
 
 netvar_server: netvar_server.o rpc-node.o
-	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} ${MD4} -o $@
+	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} ${MD4} ${UUID} -o $@
+
+netvar_client: netvar_client.o rpc-node.o
+	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} ${MD4} ${UUID} -o $@
 
 
-all: erpc-test-client erpc-test-server control implant netvar_server
+all: erpc-test-client erpc-test-server control implant netvar_server netvar_client
 
 clean:
 	-rm -f *.o control implant erpc-test-server erpc-test-client netvar_server

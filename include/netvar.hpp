@@ -3,28 +3,83 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <uuid/uuid.h>
 #include <vector>
 
+#include "endpoint.hpp"
 #include "rpc_node.hpp"
 
+template <typename T, typename SocketType> struct netvar;
+
+namespace netvar_ns {
+
+template <typename T, typename SocketType>
+int update_variable(T v, std::string uuid) {
+  auto iter = netvar<T, SocketType>::lookup.find(uuid);
+  if (iter != std::end(netvar<T, SocketType>::lookup))
+    iter->second->var = v;
+  else
+    std::cerr << "Unable to find ID: " << uuid << std::endl;
+  return 0;
+}
+
+template <typename T, typename SocketType>
+std::string instantiate_variable(T v) {
+  unsigned char uuid[16];
+  uuid_generate_random(uuid);
+  std::string strid(reinterpret_cast<char *>(uuid), sizeof(uuid));
+
+  netvar<T, SocketType> *sv = new netvar<T, SocketType>(v, false);
+  sv->id = strid;
+
+  netvar<T, SocketType>::lookup.emplace(strid, sv);
+
+  std::cerr << "Instantiated Variable: " << strid << std::endl;
+  return strid;
+}
+
+template <typename T, typename SocketType>
+int delete_variable(std::string uuid) {
+  auto iter = netvar<T, SocketType>::lookup.find(uuid);
+  if (iter != std::end(netvar<T, SocketType>::lookup)) {
+    delete iter
+        ->second; // netvar deconstructor removes itself from the lookup table.
+  } else
+    std::cerr << "Unable to find ID: " << uuid << std::endl;
+
+  return 0;
+}
+
+}; // namespace netvar_ns
+
 template <typename T, typename SocketType> struct netvar {
-  static erpc_node<SocketType> netvar_transport;
-  static std::unordered_map<std::string, netvar<T, SocketType> *> netvar_lookup;
+
+  struct netvar_service : erpc_node<SocketType> {
+    netvar_service(const endpoint &ep, const int max_incoming_connections = 0)
+        : erpc_node<SocketType>(ep, max_incoming_connections) {
+      erpc_node<SocketType>::register_function(
+          netvar_ns::instantiate_variable<T, SocketType>);
+      erpc_node<SocketType>::register_function(
+          netvar_ns::delete_variable<T, SocketType>);
+      erpc_node<SocketType>::register_function(
+          netvar_ns::update_variable<T, SocketType>);
+    }
+  };
 
   // implicit getter.
-  // T &operator=(const netvar<T> &net_obj) { return net_obj.obj; }
+  // T &operator=(const netvar<T, SocketType> &net_obj) { return net_obj.obj; }
+  const T &get() { return var; }
 
   // implicit setter.
-  // netvar<T> &operator=(const T &obj) {
+  // netvar<T, SocketType> &operator=(const T &obj) {
   void set(const T &obj) {
 
     // set for self.
-    if (is_local) {
-      this->obj = obj;
-      modified = true;
+    if (local) {
+      var = obj;
     }
     // The following MAY cause a broadcast storm. make sure to verify this.
     // EDIT: just logically i can see that this would definitely cause a
@@ -35,73 +90,58 @@ template <typename T, typename SocketType> struct netvar {
     // software-routable ID's to increase effectiveness of synchronization,
     // reduce chances of broadcast looping, capability of multicasting.
 
-    const auto update_obj = [this](T obj, std::string uuid) {
-      auto iter = netvar_lookup.find(uuid);
-      if (iter != std::end(netvar_lookup) && !is_local)
-        this->obj = obj;
-    };
     // set for remotes upstream.
-    for (auto &provider : netvar_transport.providers)
-      netvar_transport.call(provider, update_obj, obj);
+    for (auto &provider : netvar_interface->providers)
+      netvar_interface->call(
+          &provider, netvar_ns::update_variable<T, SocketType>, obj, id);
 
     // set for remotes downstream.
-    for (auto &subscriber : netvar_transport.subscribers)
-      netvar_transport.call(subscriber, update_obj, obj);
+    for (auto &subscriber : netvar_interface->subscribers)
+      netvar_interface->call(
+          &subscriber, netvar_ns::update_variable<T, SocketType>, obj, id);
   }
 
-  netvar(T &object) {
-    is_local = true;
-    modified = false;
-    this->object = std::move(object);
+  netvar(T &var, bool local = true) {
+    this->local = local;
+    this->var = std::move(var);
 
     // TODO: authorities need to be determined. i believe it should be the
     // users' authority for its own local stuff. figuring out enforcing
     // different restrictions are to be determined at a higher level. Ex. player
     // shouldnt directly control their position. but should absolutely control
     // their keyboard/mouse inputs.
-    id = netvar_transport.call(
-        netvar_transport.providers[0],
-        [](T obj) -> std::string {
-          char *id;
-          uuid_generate_random(reinterpret_cast<unsigned char *>(id));
-          std::string strid(id, strlen(id));
+    if (local) {
+      for (auto &provider : netvar_interface->providers)
+        id = netvar_interface->call(
+            &provider, netvar_ns::instantiate_variable<T, SocketType>,
+            this->var);
 
-          netvar<T, SocketType> *nv =
-              (netvar<T, SocketType> *)malloc(sizeof(netvar<T, SocketType>));
-          nv->object = std::move(obj);
-          nv->is_local = false;
-          nv->modified = false;
-          nv->id = strid;
-
-          netvar<T, SocketType>::netvar_lookup.emplace(strid, std::move(nv));
-          return strid;
-        },
-        this->object);
-
-    netvar<T, SocketType>::netvar_lookup.emplace(id, this);
+      netvar<T, SocketType>::lookup.emplace(id, this);
+    }
   }
 
   // TODO: implement ownership functionality. and a way to verify the
   // authenticity of the request.
 
   ~netvar() {
-    netvar_transport.call(
-        netvar_transport.providers[0],
-        [this](std::string id) {
-          auto iter = netvar_lookup.find(id);
-          if (iter != std::end(netvar_lookup)) {
-            free(*iter);
-            std::erase(iter);
-          }
-        },
-        id);
+    if (local) {
+      for (auto &provider : netvar_interface->providers)
+        netvar_interface->call(&provider,
+                               netvar_ns::delete_variable<T, SocketType>, id);
+    }
+
+    auto iter = lookup.find(id);
+    if (iter != std::end(lookup)) {
+      lookup.erase(iter);
+    }
   }
 
-private:
-  T object;
+  static std::unordered_map<std::string, netvar<T, SocketType> *> lookup;
+  static netvar_service *netvar_interface;
+
+  T var;
   std::string id;
-  bool modified;
-  bool is_local;
+  bool local;
 };
 
 #endif
