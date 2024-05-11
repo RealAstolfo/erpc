@@ -30,18 +30,22 @@ int main(int argc, char **argv) {
   netvar_transport_tcp.accept();
   netvar_transport_tcp.respond(&netvar_transport_tcp.subscribers[0]);
 
-  std::cout
-      << netvar<network_global, tcp_socket>::lookup.begin()->second->get().msg
-      << std::endl;
+  {
+    const network_global &nv =
+        *(netvar<network_global, tcp_socket>::lookup.begin()->second);
+    std::cout << nv.msg << std::endl;
+  }
 
   netvar_transport_tcp.respond(&netvar_transport_tcp.subscribers[0]);
 
   // network_global message = {.msg = "Hello World"};
   // netvar<network_global> global_message(message);
 
-  std::cout
-      << netvar<network_global, tcp_socket>::lookup.begin()->second->get().msg
-      << std::endl;
+  {
+    const network_global &nv =
+        *(netvar<network_global, tcp_socket>::lookup.begin()->second);
+    std::cout << nv.msg << std::endl;
+  }
 
   netvar_transport_tcp.respond(&netvar_transport_tcp.subscribers[0]);
   return 0;

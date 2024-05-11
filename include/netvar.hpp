@@ -70,12 +70,12 @@ template <typename T, typename SocketType> struct netvar {
   };
 
   // implicit getter.
-  // T &operator=(const netvar<T, SocketType> &net_obj) { return net_obj.obj; }
-  const T &get() { return var; }
+  operator const T &() const { return var; }
+  // const T &get() { return var; }
 
   // implicit setter.
-  // netvar<T, SocketType> &operator=(const T &obj) {
-  void set(const T &obj) {
+  netvar<T, SocketType> &operator=(const T &obj) {
+    // void set(const T &obj) {
 
     // set for self.
     if (local) {
@@ -99,6 +99,8 @@ template <typename T, typename SocketType> struct netvar {
     for (auto &subscriber : netvar_interface->subscribers)
       netvar_interface->call(
           &subscriber, netvar_ns::update_variable<T, SocketType>, obj, id);
+
+    return *this;
   }
 
   netvar(T &var, bool local = true) {

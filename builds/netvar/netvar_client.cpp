@@ -35,6 +35,6 @@ int main(int argc, char **argv) {
   network_global message = {.msg = "Hello World"};
   netvar<network_global, tcp_socket> global_message(message);
   message.msg = "Modified!";
-  global_message.set(message);
+  global_message = message;
   return 0;
 }
