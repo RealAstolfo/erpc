@@ -1,6 +1,7 @@
 #ifndef NETVAR_HPP
 #define NETVAR_HPP
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -45,7 +46,11 @@ std::string instantiate_variable(T v) {
   return strid;
 }
 
-template <typename SocketType, typename T> T delete_variable(std::string uuid) {
+// std::optional<T> to get around current limitation of erpc, where this
+// function ends up having the same signature hash for ultimately different
+// functions
+template <typename SocketType, typename T>
+std::optional<T> delete_variable(std::string uuid) {
   auto &lookup = singleton<
       std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
 
@@ -56,8 +61,7 @@ template <typename SocketType, typename T> T delete_variable(std::string uuid) {
   } else
     std::cerr << "Unable to find ID: " << uuid << std::endl;
 
-  T trash;
-  return trash;
+  return {};
 }
 
 }; // namespace netvar_ns

@@ -26,8 +26,8 @@ template <typename Ret, typename Obj, typename... Args>
 struct signature<Ret (Obj::*)(Args...) const> {
   using args = std::tuple<Args...>;
   using type =
-      std::conditional_t<std::is_same_v<Ret, void>, std::tuple<Args...>,
-                         std::tuple<Ret, Args...>>;
+      std::conditional_t<std::is_same_v<Ret, void>, std::tuple<Obj, Args...>,
+                         std::tuple<Ret, Obj, Args...>>;
   using ret = Ret;
 };
 

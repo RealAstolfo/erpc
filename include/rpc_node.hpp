@@ -10,6 +10,7 @@
 #include <md4.h>
 #include <memory>
 #include <netinet/in.h>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <sys/types.h>
@@ -21,6 +22,7 @@
 
 #include <bitsery/adapter/buffer.h>
 #include <bitsery/bitsery.h>
+#include <bitsery/ext/std_optional.h>
 #include <bitsery/ext/std_tuple.h>
 #include <bitsery/traits/string.h>
 #include <bitsery/traits/vector.h>
@@ -35,6 +37,12 @@
 #include "tcp.hpp"
 #include "udp.hpp"
 
+template <typename T> struct is_optional : std::false_type {};
+
+template <typename T> struct is_optional<std::optional<T>> : std::true_type {};
+
+template <typename T> constexpr bool is_optional_v = is_optional<T>::value;
+
 template <typename Serializer, typename T>
 auto process_value_or_object(Serializer &serializer, T &&value)
     -> std::enable_if_t<
@@ -45,8 +53,15 @@ auto process_value_or_object(Serializer &serializer, T &&value)
 
 template <typename Serializer, typename T>
 auto process_value_or_object(Serializer &serializer, T &&value)
+    -> std::enable_if_t<is_optional_v<std::remove_reference_t<T>>> {
+  serializer->ext(std::forward<T>(value), bitsery::ext::StdOptional{});
+}
+
+template <typename Serializer, typename T>
+auto process_value_or_object(Serializer &serializer, T &&value)
     -> std::enable_if_t<
         !std::is_same_v<std::remove_reference_t<T>, std::string> &&
+        !is_optional_v<std::remove_reference_t<T>> &&
         std::is_class_v<std::remove_reference_t<T>>> {
   serializer->object(std::forward<T>(value));
 }
@@ -209,16 +224,17 @@ template <> struct erpc_node<tcp_socket> {
     target->send(buf);
     if constexpr (std::is_void_v<result_t>)
       return;
+    else {
+      target->receive_some(byte_len.bytes);
+      buf.resize(byte_len.len);
+      target->receive_some(buf);
 
-    target->receive_some(byte_len.bytes);
-    buf.resize(byte_len.len);
-    target->receive_some(buf);
-
-    result_t return_val;
-    auto deserializer = std::unique_ptr<type_deserializer>(
-        new type_deserializer{std::begin(buf), byte_len.len});
-    process_value_or_object(deserializer, return_val);
-    return return_val;
+      result_t return_val;
+      auto deserializer = std::unique_ptr<type_deserializer>(
+          new type_deserializer{std::begin(buf), byte_len.len});
+      process_value_or_object(deserializer, return_val);
+      return return_val;
+    }
   }
 
   /*
