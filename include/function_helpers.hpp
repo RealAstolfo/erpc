@@ -16,20 +16,18 @@ concept is_functor = std::is_class_v<std::decay_t<Fun>> &&
 template <typename Sig> struct signature;
 template <typename Ret, typename... Args> struct signature<Ret(Args...)> {
   using args = std::tuple<Args...>;
-  using type = std::tuple<Ret, Args...>;
+  using type =
+      std::conditional_t<std::is_same_v<Ret, void>, std::tuple<Args...>,
+                         std::tuple<Ret, Args...>>;
   using ret = Ret;
 };
 
 template <typename Ret, typename Obj, typename... Args>
-struct signature<Ret (Obj::*)(Args...)> {
-  using args = std::tuple<Args...>;
-  using type = std::tuple<Ret, Args...>;
-  using ret = Ret;
-};
-template <typename Ret, typename Obj, typename... Args>
 struct signature<Ret (Obj::*)(Args...) const> {
   using args = std::tuple<Args...>;
-  using type = std::tuple<Ret, Args...>;
+  using type =
+      std::conditional_t<std::is_same_v<Ret, void>, std::tuple<Args...>,
+                         std::tuple<Ret, Args...>>;
   using ret = Ret;
 };
 
