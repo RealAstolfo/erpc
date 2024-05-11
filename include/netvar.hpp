@@ -14,73 +14,59 @@
 
 template <typename SocketType, typename T> struct netvar;
 
-namespace netvar_ns {
-
-template <typename SocketType, typename T>
-int update_variable(T v, std::string uuid) {
-  auto &lookup = singleton<
-      std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
-
-  auto iter = lookup.find(uuid);
-  if (iter != std::end(lookup))
-    iter->second->var = v;
-  else
-    std::cerr << "Unable to find ID: " << uuid << std::endl;
-  return 0;
-}
-
-template <typename SocketType, typename T>
-std::string instantiate_variable(T v) {
-  unsigned char uuid[16];
-  uuid_generate_random(uuid);
-  std::string strid(reinterpret_cast<char *>(uuid), sizeof(uuid));
-
-  netvar<SocketType, T> *sv = new netvar<SocketType, T>(v, false);
-  sv->id = strid;
-  auto &lookup = singleton<
-      std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
-
-  lookup.emplace(strid, sv);
-
-  std::cerr << "Instantiated Variable: " << strid << std::endl;
-  return strid;
-}
-
-// std::optional<T> to get around current limitation of erpc, where this
-// function ends up having the same signature hash for ultimately different
-// functions
-template <typename SocketType, typename T>
-std::optional<T> delete_variable(std::string uuid) {
-  auto &lookup = singleton<
-      std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
-
-  auto iter = lookup.find(uuid);
-  if (iter != std::end(lookup)) {
-    delete iter->second; // netvar deconstructor removes itself from the
-                         // lookup table.
-  } else
-    std::cerr << "Unable to find ID: " << uuid << std::endl;
-
-  return {};
-}
-
-}; // namespace netvar_ns
-
 template <typename SocketType, typename... Types>
 struct netvar_service : erpc_node<SocketType> {
   netvar_service(const endpoint &ep, const int max_incoming_connections = 0)
       : erpc_node<SocketType>(ep, max_incoming_connections) {
     ((erpc_node<SocketType>::register_function(
-         netvar_ns::instantiate_variable<SocketType, Types>)),
+         this->instantiate_variable<Types>)),
      ...);
-    ((erpc_node<SocketType>::register_function(
-         netvar_ns::delete_variable<SocketType, Types>)),
+    ((erpc_node<SocketType>::register_function(this->delete_variable<Types>)),
      ...);
-    ((erpc_node<SocketType>::register_function(
-         netvar_ns::update_variable<SocketType, Types>)),
+    ((erpc_node<SocketType>::register_function(this->update_variable<Types>)),
      ...);
 
     singleton<erpc_node<SocketType> *>::instance() = this;
+  }
+
+  template <typename T> static std::string instantiate_variable(T v) {
+    unsigned char uuid[16];
+    uuid_generate_random(uuid);
+    std::string strid(reinterpret_cast<char *>(uuid), sizeof(uuid));
+
+    netvar<SocketType, T> *sv = new netvar<SocketType, T>(v, false);
+    sv->id = strid;
+    auto &lookup = singleton<
+        std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
+
+    lookup.emplace(strid, sv);
+
+    std::cerr << "Instantiated Variable: " << strid << std::endl;
+    return strid;
+  }
+
+  template <typename T> static int update_variable(T v, std::string uuid) {
+    auto &lookup = singleton<
+        std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
+
+    auto iter = lookup.find(uuid);
+    if (iter != std::end(lookup))
+      iter->second->var = v;
+    else
+      std::cerr << "Unable to find ID: " << uuid << std::endl;
+    return 0;
+  }
+
+  template <typename T> static void delete_variable(std::string uuid) {
+    auto &lookup = singleton<
+        std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
+
+    auto iter = lookup.find(uuid);
+    if (iter != std::end(lookup)) {
+      delete iter->second; // netvar deconstructor removes itself from the
+                           // lookup table.
+    } else
+      std::cerr << "Unable to find ID: " << uuid << std::endl;
   }
 };
 
@@ -111,13 +97,15 @@ template <typename SocketType, typename T> struct netvar {
 
     // set for remotes upstream.
     for (auto &provider : service->providers)
-      service->call(&provider, netvar_ns::update_variable<SocketType, T>, obj,
-                    id);
+      service->call(&provider,
+                    netvar_service<SocketType, T>::template update_variable<T>,
+                    obj, id);
 
     // set for remotes downstream.
     for (auto &subscriber : service->subscribers)
-      service->call(&subscriber, netvar_ns::update_variable<SocketType, T>, obj,
-                    id);
+      service->call(&subscriber,
+                    netvar_service<SocketType, T>::template update_variable<T>,
+                    obj, id);
 
     return *this;
   }
@@ -138,9 +126,10 @@ template <typename SocketType, typename T> struct netvar {
           std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
 
       for (auto &provider : service->providers)
-        id = service->call(&provider,
-                           netvar_ns::instantiate_variable<SocketType, T>,
-                           this->var);
+        id = service->call(
+            &provider,
+            netvar_service<SocketType, T>::template instantiate_variable<T>,
+            this->var);
 
       lookup.emplace(id, this);
     }
@@ -156,7 +145,9 @@ template <typename SocketType, typename T> struct netvar {
 
     if (local) {
       for (auto &provider : service->providers)
-        service->call(&provider, netvar_ns::delete_variable<SocketType, T>, id);
+        service->call(
+            &provider,
+            netvar_service<SocketType, T>::template delete_variable<T>, id);
     }
 
     auto iter = lookup.find(id);
