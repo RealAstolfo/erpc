@@ -9,8 +9,16 @@ struct network_global {
   std::string msg;
 };
 
+struct network_number {
+  int x;
+};
+
 template <typename S> void serialize(S &s, network_global &ng) {
   s.template text<sizeof(std::string::value_type)>(ng.msg, 1024);
+}
+
+template <typename S> void serialize(S &s, network_number &nm) {
+  s.value4b(nm.x);
 }
 
 int main(int argc, char **argv) {
@@ -21,12 +29,17 @@ int main(int argc, char **argv) {
   const endpoint serv = resolver.resolve("127.0.0.1", "7777").front();
   const endpoint any;
 
-  netvar<network_global, tcp_socket>::netvar_service netvar_transport_tcp(any,
-                                                                          0);
-  netvar_transport_tcp.subscribe(serv);
+  netvar_service<tcp_socket, network_global, network_number> nvs(any, 0);
+  nvs.subscribe(serv);
   network_global message = {.msg = "Hello World"};
-  netvar<network_global, tcp_socket> global_message(message);
+  netvar<tcp_socket, network_global> global_message(message);
   message.msg = "Modified!";
   global_message = message;
+
+  network_number number = {.x = 10};
+  netvar<tcp_socket, network_number> nm(number);
+  number.x = 69;
+  nm = number;
+
   return 0;
 }

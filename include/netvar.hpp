@@ -3,6 +3,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <uuid/uuid.h>
 #include <vector>
 
@@ -10,14 +11,14 @@
 #include "rpc_node.hpp"
 #include "singleton.hpp"
 
-template <typename T, typename SocketType> struct netvar;
+template <typename SocketType, typename T> struct netvar;
 
 namespace netvar_ns {
 
-template <typename T, typename SocketType>
+template <typename SocketType, typename T>
 int update_variable(T v, std::string uuid) {
   auto &lookup = singleton<
-      std::unordered_map<std::string, netvar<T, SocketType> *>>::instance();
+      std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
 
   auto iter = lookup.find(uuid);
   if (iter != std::end(lookup))
@@ -27,16 +28,16 @@ int update_variable(T v, std::string uuid) {
   return 0;
 }
 
-template <typename T, typename SocketType>
+template <typename SocketType, typename T>
 std::string instantiate_variable(T v) {
   unsigned char uuid[16];
   uuid_generate_random(uuid);
   std::string strid(reinterpret_cast<char *>(uuid), sizeof(uuid));
 
-  netvar<T, SocketType> *sv = new netvar<T, SocketType>(v, false);
+  netvar<SocketType, T> *sv = new netvar<SocketType, T>(v, false);
   sv->id = strid;
   auto &lookup = singleton<
-      std::unordered_map<std::string, netvar<T, SocketType> *>>::instance();
+      std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
 
   lookup.emplace(strid, sv);
 
@@ -44,10 +45,9 @@ std::string instantiate_variable(T v) {
   return strid;
 }
 
-template <typename T, typename SocketType>
-int delete_variable(std::string uuid) {
+template <typename SocketType, typename T> T delete_variable(std::string uuid) {
   auto &lookup = singleton<
-      std::unordered_map<std::string, netvar<T, SocketType> *>>::instance();
+      std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
 
   auto iter = lookup.find(uuid);
   if (iter != std::end(lookup)) {
@@ -56,33 +56,38 @@ int delete_variable(std::string uuid) {
   } else
     std::cerr << "Unable to find ID: " << uuid << std::endl;
 
-  return 0;
+  T trash;
+  return trash;
 }
 
 }; // namespace netvar_ns
 
-template <typename T, typename SocketType> struct netvar {
+template <typename SocketType, typename... Types>
+struct netvar_service : erpc_node<SocketType> {
+  netvar_service(const endpoint &ep, const int max_incoming_connections = 0)
+      : erpc_node<SocketType>(ep, max_incoming_connections) {
+    ((erpc_node<SocketType>::register_function(
+         netvar_ns::instantiate_variable<SocketType, Types>)),
+     ...);
+    ((erpc_node<SocketType>::register_function(
+         netvar_ns::delete_variable<SocketType, Types>)),
+     ...);
+    ((erpc_node<SocketType>::register_function(
+         netvar_ns::update_variable<SocketType, Types>)),
+     ...);
 
-  struct netvar_service : erpc_node<SocketType> {
-    netvar_service(const endpoint &ep, const int max_incoming_connections = 0)
-        : erpc_node<SocketType>(ep, max_incoming_connections) {
-      erpc_node<SocketType>::register_function(
-          netvar_ns::instantiate_variable<T, SocketType>);
-      erpc_node<SocketType>::register_function(
-          netvar_ns::delete_variable<T, SocketType>);
-      erpc_node<SocketType>::register_function(
-          netvar_ns::update_variable<T, SocketType>);
+    singleton<erpc_node<SocketType> *>::instance() = this;
+  }
+};
 
-      singleton<netvar<T, SocketType>::netvar_service *>::instance() = this;
-    }
-  };
+template <typename SocketType, typename T> struct netvar {
 
   // implicit getter.
   operator const T &() const { return var; }
   // const T &get() { return var; }
 
   // implicit setter.
-  netvar<T, SocketType> &operator=(const T &obj) {
+  netvar<SocketType, T> &operator=(const T &obj) {
     // void set(const T &obj) {
 
     // set for self.
@@ -98,17 +103,16 @@ template <typename T, typename SocketType> struct netvar {
     // software-routable ID's to increase effectiveness of synchronization,
     // reduce chances of broadcast looping, capability of multicasting.
 
-    auto &service =
-        singleton<netvar<T, SocketType>::netvar_service *>::instance();
+    auto &service = singleton<erpc_node<SocketType> *>::instance();
 
     // set for remotes upstream.
     for (auto &provider : service->providers)
-      service->call(&provider, netvar_ns::update_variable<T, SocketType>, obj,
+      service->call(&provider, netvar_ns::update_variable<SocketType, T>, obj,
                     id);
 
     // set for remotes downstream.
     for (auto &subscriber : service->subscribers)
-      service->call(&subscriber, netvar_ns::update_variable<T, SocketType>, obj,
+      service->call(&subscriber, netvar_ns::update_variable<SocketType, T>, obj,
                     id);
 
     return *this;
@@ -125,14 +129,13 @@ template <typename T, typename SocketType> struct netvar {
     // their keyboard/mouse inputs.
     if (local) {
 
-      auto &service =
-          singleton<netvar<T, SocketType>::netvar_service *>::instance();
+      auto &service = singleton<erpc_node<SocketType> *>::instance();
       auto &lookup = singleton<
-          std::unordered_map<std::string, netvar<T, SocketType> *>>::instance();
+          std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
 
       for (auto &provider : service->providers)
         id = service->call(&provider,
-                           netvar_ns::instantiate_variable<T, SocketType>,
+                           netvar_ns::instantiate_variable<SocketType, T>,
                            this->var);
 
       lookup.emplace(id, this);
@@ -143,14 +146,13 @@ template <typename T, typename SocketType> struct netvar {
   // authenticity of the request.
 
   ~netvar() {
-    auto &service =
-        singleton<netvar<T, SocketType>::netvar_service *>::instance();
+    auto &service = singleton<erpc_node<SocketType> *>::instance();
     auto &lookup = singleton<
-        std::unordered_map<std::string, netvar<T, SocketType> *>>::instance();
+        std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
 
     if (local) {
       for (auto &provider : service->providers)
-        service->call(&provider, netvar_ns::delete_variable<T, SocketType>, id);
+        service->call(&provider, netvar_ns::delete_variable<SocketType, T>, id);
     }
 
     auto iter = lookup.find(id);
