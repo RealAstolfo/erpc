@@ -45,7 +45,7 @@ struct netvar_service : erpc_node<SocketType> {
     return strid;
   }
 
-  template <typename T> static int update_variable(T v, std::string uuid) {
+  template <typename T> static void update_variable(T v, std::string uuid) {
     auto &lookup = singleton<
         std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
 
@@ -54,10 +54,11 @@ struct netvar_service : erpc_node<SocketType> {
       iter->second->var = v;
     else
       std::cerr << "Unable to find ID: " << uuid << std::endl;
-    return 0;
   }
 
-  template <typename T> static void delete_variable(std::string uuid) {
+  template <typename T>
+  static void delete_variable(std::string uuid, std::optional<T> trash) {
+    (void)trash;
     auto &lookup = singleton<
         std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
 
@@ -147,7 +148,8 @@ template <typename SocketType, typename T> struct netvar {
       for (auto &provider : service->providers)
         service->call(
             &provider,
-            netvar_service<SocketType, T>::template delete_variable<T>, id);
+            netvar_service<SocketType, T>::template delete_variable<T>, id,
+            std::make_optional<T>({}));
     }
 
     auto iter = lookup.find(id);
