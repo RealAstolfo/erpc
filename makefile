@@ -63,5 +63,5 @@ netvar_client: netvar_client.o rpc-node.o
 all: erpc-test-client erpc-test-server control implant netvar_server netvar_client
 
 clean:
-	-rm -f *.o control implant erpc-test-server erpc-test-client netvar_server
+	-rm -f *.o control implant erpc-test-server erpc-test-client netvar_server netvar_client
 	make -C vendors/enet clean
