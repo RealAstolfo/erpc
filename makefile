@@ -1,4 +1,4 @@
-CXX = g++
+CXX = zig c++
 
 INC = -I./include -I./vendors -I./vendors/enet/include -I./vendors/enet/vendors/i2pd/libi2pd -I./vendors/exstd/include -I./vendors/exstd/vendors/bitsery/include
 LIB =  -L. -L/usr/lib64 -L/usr/local/lib64
