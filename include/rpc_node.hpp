@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cxxabi.h>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -16,6 +17,7 @@
 #include <sys/types.h>
 #include <tuple>
 #include <type_traits>
+#include <typeinfo>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -74,6 +76,16 @@ auto process_value_or_object(Serializer &serializer, T &&value)
   serializer->template value<sizeof(T)>(std::forward<T>(value));
 }
 
+constexpr std::string demangle(const std::string &type) {
+  int status;
+  char *realname;
+
+  realname = abi::__cxa_demangle(type.c_str(), NULL, NULL, &status);
+  std::string func_name = std::string(realname);
+  free(realname);
+  return func_name;
+}
+
 /*
 One must pick a socket type for "T", a later example will show a TCP example.
 */
@@ -114,7 +126,9 @@ template <> struct erpc_node<tcp_socket> {
     using func_args = decltype(arguments_t(function));
     using result_t = decltype(return_t(function));
     using func_sig = decltype(signature_t(function));
-    std::string func_name = typeid(func_sig).name();
+    std::string func_name = demangle(typeid(func_sig).name());
+
+    std::cerr << "Function Name: " << func_name << std::endl;
 
     MD4_CTX md4ctx;
     MD4Init(&md4ctx);
@@ -190,7 +204,7 @@ template <> struct erpc_node<tcp_socket> {
     using type_deserializer = bitsery::Deserializer<reader>;
 
     using func_sig = decltype(signature_t(function));
-    std::string func_name = typeid(func_sig).name();
+    std::string func_name = demangle(typeid(func_sig).name());
 
     MD4_CTX md4ctx;
     MD4Init(&md4ctx);
@@ -315,7 +329,9 @@ template <> struct erpc_node<ssl_socket> {
     using func_args = decltype(arguments_t(function));
     using result_t = decltype(return_t(function));
     using func_sig = decltype(signature_t(function));
-    std::string func_name = typeid(func_sig).name();
+    std::string func_name = demangle(typeid(func_sig).name());
+    std::cerr << "Function Name: " << func_name << std::endl;
+
     MD4_CTX md4ctx;
     MD4Init(&md4ctx);
     MD4Update(&md4ctx, (const uint8_t *)func_name.c_str(), func_name.length());
@@ -390,7 +406,8 @@ template <> struct erpc_node<ssl_socket> {
     using type_deserializer = bitsery::Deserializer<reader>;
 
     using func_sig = decltype(signature_t(function));
-    std::string func_name = typeid(func_sig).name();
+    std::string func_name = demangle(typeid(func_sig).name());
+
     MD4_CTX md4ctx;
     MD4Init(&md4ctx);
     MD4Update(&md4ctx, (const uint8_t *)func_name.c_str(), func_name.length());
@@ -514,7 +531,9 @@ template <> struct erpc_node<http_socket> {
     using func_args = decltype(arguments_t(function));
     using result_t = decltype(return_t(function));
     using func_sig = decltype(signature_t(function));
-    std::string func_name = typeid(func_sig).name();
+    std::string func_name = demangle(typeid(func_sig).name());
+    std::cerr << "Function Name: " << func_name << std::endl;
+
     MD4_CTX md4ctx;
     MD4Init(&md4ctx);
     MD4Update(&md4ctx, (const uint8_t *)func_name.c_str(), func_name.length());
@@ -586,7 +605,8 @@ template <> struct erpc_node<http_socket> {
     using type_deserializer = bitsery::Deserializer<reader>;
 
     using func_sig = decltype(signature_t(function));
-    std::string func_name = typeid(func_sig).name();
+    std::string func_name = demangle(typeid(func_sig).name());
+
     MD4_CTX md4ctx;
     MD4Init(&md4ctx);
     MD4Update(&md4ctx, (const uint8_t *)func_name.c_str(), func_name.length());
