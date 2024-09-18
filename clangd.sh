@@ -1,2 +1,2 @@
 #!/bin/sh
-bear -- make $1
+bear -- make CXX=clang++ $1
