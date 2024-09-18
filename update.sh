@@ -9,6 +9,7 @@ git submodule foreach '
   if git show-ref --verify --quiet refs/heads/main; then
     git checkout main
     git pull origin main
+    ./update.sh
   else
     echo "Skipping $name: main branch does not exist."
   fi

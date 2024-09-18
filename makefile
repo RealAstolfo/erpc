@@ -3,7 +3,7 @@ CXX = zig c++
 INC = -I./include -I./vendors -I./vendors/enet/include -I./vendors/enet/vendors/i2pd/libi2pd -I./vendors/exstd/include -I./vendors/exstd/vendors/bitsery/include
 LIB =  -L. -L/usr/lib64 -L/usr/local/lib64
 
-CFLAGS = -march=native -O3 -g -Wall -Wextra -pedantic $(INC)
+CFLAGS = -march=native -O3 -flto -g -Wall -Wextra -pedantic $(INC)
 CXXFLAGS = -std=c++20 $(CFLAGS)
 LDFLAGS = $(LIB) -O3
 
