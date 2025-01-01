@@ -51,7 +51,7 @@ struct netvar_service : erpc_node<SocketType> {
 
     auto iter = lookup.find(uuid);
     if (iter != std::end(lookup))
-      *iter->second = v;
+      iter->second->var = v;
     else
       std::cerr << "Unable to find ID: " << uuid << std::endl;
   }
@@ -71,10 +71,10 @@ struct netvar_service : erpc_node<SocketType> {
   }
 };
 
-template <typename SocketType, typename T> struct netvar : T {
+template <typename SocketType, typename T> struct netvar {
 
   // implicit getter.
-  operator const T &() const { return *this; }
+  operator const T &() const { return this->var; }
   // const T &get() { return var; }
 
   // implicit setter.
@@ -82,7 +82,7 @@ template <typename SocketType, typename T> struct netvar : T {
 
     // set for self.
     if (local) {
-      *this = obj;
+      this->var = obj;
     }
     // The following MAY cause a broadcast storm. make sure to verify this.
     // EDIT: just logically i can see that this would definitely cause a
@@ -110,9 +110,9 @@ template <typename SocketType, typename T> struct netvar : T {
     return *this;
   }
 
-  template <typename... Args>
-  netvar(Args &&...args, bool local = true) : T(std::forward<Args>(args)...) {
+  template <typename... Args> netvar(Args &&...args, bool local = true) {
     this->local = local;
+    this->var = T(std::forward<Args>(args)...);
 
     // TODO: authorities need to be determined. i believe it should be the
     // users' authority for its own local stuff. figuring out enforcing
@@ -129,18 +129,19 @@ template <typename SocketType, typename T> struct netvar : T {
         id = service->call(
             &provider,
             netvar_service<SocketType, T>::template instantiate_variable<T>,
-            *this);
+            this->var);
 
-      std::cerr << "Received ID: " << id << std::endl;
       lookup.emplace(id, this);
     }
   }
 
-  netvar(const T &base, bool local = true) : T(base) {
+  netvar(const T &base, bool local = true) {
     this->local = local;
+    this->var = base;
+
     // TODO: authorities need to be determined. i believe it should be the
     // users' authority for its own local stuff. figuring out enforcing
-    // different restrictions are to be determined at a higher level. Ex. player
+    // different restrictions are to be determined at a higher level. Ex.player
     // shouldnt directly control their position. but should absolutely control
     // their keyboard/mouse inputs.
     if (local) {
@@ -153,9 +154,8 @@ template <typename SocketType, typename T> struct netvar : T {
         id = service->call(
             &provider,
             netvar_service<SocketType, T>::template instantiate_variable<T>,
-            *this);
+            base);
 
-      std::cerr << "Received ID: " << id << std::endl;
       lookup.emplace(id, this);
     }
   }
@@ -182,6 +182,7 @@ template <typename SocketType, typename T> struct netvar : T {
     }
   }
 
+  T var;
   std::string id;
   bool local;
 };
