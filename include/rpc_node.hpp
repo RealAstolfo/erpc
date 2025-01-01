@@ -22,13 +22,12 @@
 #include <utility>
 #include <vector>
 
-#include <bitsery/adapter/buffer.h>
-#include <bitsery/bitsery.h>
-#include <bitsery/ext/std_optional.h>
-#include <bitsery/ext/std_tuple.h>
-#include <bitsery/traits/string.h>
-#include <bitsery/traits/vector.h>
-
+#include "bitsery/adapter/buffer.h"
+#include "bitsery/bitsery.h"
+#include "bitsery/ext/std_optional.h"
+#include "bitsery/ext/std_tuple.h"
+#include "bitsery/traits/string.h"
+#include "bitsery/traits/vector.h"
 #include "bitsery/deserializer.h"
 #include "bitsery/serializer.h"
 

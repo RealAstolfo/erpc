@@ -31,15 +31,11 @@ int main(int argc, char **argv) {
 
   netvar_service<tcp_socket, network_global, network_number> nvs(any, 0);
   nvs.subscribe(serv);
-  network_global message = {.msg = "Hello World"};
-  netvar<tcp_socket, network_global> global_message(message);
-  message.msg = "Modified!";
-  global_message = message;
+  netvar<tcp_socket, network_global> global_message("Hello World");
+  global_message.msg = "Modified!";
 
-  network_number number = {.x = 10};
-  netvar<tcp_socket, network_number> nm(number);
-  number.x = 69;
-  nm = number;
+  netvar<tcp_socket, network_number> nm(10);
+  nm.x = 69;
 
   return 0;
 }

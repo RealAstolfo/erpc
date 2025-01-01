@@ -51,7 +51,7 @@ struct netvar_service : erpc_node<SocketType> {
 
     auto iter = lookup.find(uuid);
     if (iter != std::end(lookup))
-      iter->second->var = v;
+      *iter->second = v;
     else
       std::cerr << "Unable to find ID: " << uuid << std::endl;
   }
@@ -71,19 +71,18 @@ struct netvar_service : erpc_node<SocketType> {
   }
 };
 
-template <typename SocketType, typename T> struct netvar {
+template <typename SocketType, typename T> struct netvar : T {
 
   // implicit getter.
-  operator const T &() const { return var; }
+  operator const T &() const { return *this; }
   // const T &get() { return var; }
 
   // implicit setter.
   netvar<SocketType, T> &operator=(const T &obj) {
-    // void set(const T &obj) {
 
     // set for self.
     if (local) {
-      var = obj;
+      *this = obj;
     }
     // The following MAY cause a broadcast storm. make sure to verify this.
     // EDIT: just logically i can see that this would definitely cause a
@@ -111,9 +110,9 @@ template <typename SocketType, typename T> struct netvar {
     return *this;
   }
 
-  netvar(T &var, bool local = true) {
+  template <typename... Args>
+  netvar(Args &&...args, bool local = true) : T(std::forward<Args>(args)...) {
     this->local = local;
-    this->var = std::move(var);
 
     // TODO: authorities need to be determined. i believe it should be the
     // users' authority for its own local stuff. figuring out enforcing
@@ -130,8 +129,33 @@ template <typename SocketType, typename T> struct netvar {
         id = service->call(
             &provider,
             netvar_service<SocketType, T>::template instantiate_variable<T>,
-            this->var);
+            *this);
 
+      std::cerr << "Received ID: " << id << std::endl;
+      lookup.emplace(id, this);
+    }
+  }
+
+  netvar(const T &base, bool local = true) : T(base) {
+    this->local = local;
+    // TODO: authorities need to be determined. i believe it should be the
+    // users' authority for its own local stuff. figuring out enforcing
+    // different restrictions are to be determined at a higher level. Ex. player
+    // shouldnt directly control their position. but should absolutely control
+    // their keyboard/mouse inputs.
+    if (local) {
+
+      auto &service = singleton<erpc_node<SocketType> *>::instance();
+      auto &lookup = singleton<
+          std::unordered_map<std::string, netvar<SocketType, T> *>>::instance();
+
+      for (auto &provider : service->providers)
+        id = service->call(
+            &provider,
+            netvar_service<SocketType, T>::template instantiate_variable<T>,
+            *this);
+
+      std::cerr << "Received ID: " << id << std::endl;
       lookup.emplace(id, this);
     }
   }
@@ -158,7 +182,6 @@ template <typename SocketType, typename T> struct netvar {
     }
   }
 
-  T var;
   std::string id;
   bool local;
 };
