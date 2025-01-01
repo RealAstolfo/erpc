@@ -78,6 +78,8 @@ template <typename SocketType, typename T> struct netvar {
   // const T &get() { return var; }
 
   // implicit setter.
+  template <typename U = T,
+            typename = std::enable_if_t<std::is_same_v<std::decay_t<U>, T>>>
   netvar<SocketType, T> &operator=(const T &obj) {
 
     // set for self.
@@ -110,8 +112,45 @@ template <typename SocketType, typename T> struct netvar {
     return *this;
   }
 
-  template <typename... Args> netvar(Args &&...args, bool local = true) {
-    this->local = local;
+  template <typename... Args,
+            typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
+  netvar<SocketType, T> &operator=(Args &&...args) {
+
+    auto obj = T(std::forward<Args>(args)...);
+    // set for self.
+    if (local) {
+      this->var = obj;
+    }
+    // The following MAY cause a broadcast storm. make sure to verify this.
+    // EDIT: just logically i can see that this would definitely cause a
+    // broadcast storm, so ill have to implement a "broadcast" function in the
+    // erpc_node, which allows users to broadcast to the rest of the network in
+    // a way where it does not also return to sender.
+    // NOTE: would this also be reasoning to introduce meshing? (making
+    // software-routable ID's to increase effectiveness of synchronization,
+    // reduce chances of broadcast looping, capability of multicasting.
+
+    auto &service = singleton<erpc_node<SocketType> *>::instance();
+
+    // set for remotes upstream.
+    for (auto &provider : service->providers)
+      service->call(&provider,
+                    netvar_service<SocketType, T>::template update_variable<T>,
+                    obj, id);
+
+    // set for remotes downstream.
+    for (auto &subscriber : service->subscribers)
+      service->call(&subscriber,
+                    netvar_service<SocketType, T>::template update_variable<T>,
+                    obj, id);
+
+    return *this;
+  }
+
+  template <typename... Args,
+            typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
+  explicit netvar(Args &&...args) {
+    this->local = true;
     this->var = T(std::forward<Args>(args)...);
 
     // TODO: authorities need to be determined. i believe it should be the
@@ -135,7 +174,9 @@ template <typename SocketType, typename T> struct netvar {
     }
   }
 
-  netvar(const T &base, bool local = true) {
+  template <typename U = T,
+            typename = std::enable_if_t<std::is_same_v<std::decay_t<U>, T>>>
+  explicit netvar(const T &base, bool local = true) {
     this->local = local;
     this->var = base;
 
