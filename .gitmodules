@@ -1,6 +1,6 @@
 [submodule "vendors/enet"]
 	path = vendors/enet
-	url = ssh://git@github.com:RealAstolfo/enet.git
+	url = git@github.com:RealAstolfo/enet.git
 [submodule "vendors/exstd"]
 	path = vendors/exstd
-	url = ssh://git@github.com:RealAstolfo/exstd.git
+	url = git@github.com:RealAstolfo/exstd.git
