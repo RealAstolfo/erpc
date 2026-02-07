@@ -9,3 +9,4 @@
 *.a
 *.spv
 compile_commands.json
+vendors/

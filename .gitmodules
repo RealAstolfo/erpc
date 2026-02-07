@@ -1,6 +1,0 @@
-[submodule "vendors/enet"]
-	path = vendors/enet
-	url = git@github.com:RealAstolfo/enet.git
-[submodule "vendors/exstd"]
-	path = vendors/exstd
-	url = git@github.com:RealAstolfo/exstd.git
