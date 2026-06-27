@@ -1,67 +1,113 @@
-CXX = zig c++
+CXX ?= g++
+AR ?= gcc-ar
 
-INC = -I./include -I./vendors -I./vendors/enet/include -I./vendors/enet/vendors/i2pd/libi2pd -I./vendors/exstd/include -I./vendors/exstd/vendors/bitsery/include
-LIB =  -L. -L/usr/lib64 -L/usr/local/lib64
+NAME = erpc
+LIBA = lib$(NAME).a
+
+# Sibling e* libraries (exstd, enet) and third-party headers are provided by
+# Guix on the compiler search path (CPATH / LIBRARY_PATH).  Only this repo's
+# own headers are referenced explicitly.
+INC = -I./include
 
 CFLAGS = -march=native -O3 -flto -g -Wall -Wextra -pedantic $(INC)
 CXXFLAGS = -std=c++20 $(CFLAGS)
-LDFLAGS = $(LIB) -O3
 
-SSL = `pkgconf --cflags --libs openssl`
-ZLIB = `pkgconf --cflags --libs zlib`
-MD4 = `pkgconf --cflags --libs libmd`
-UUID = `pkgconf --cflags --libs uuid`
+# mostly-static: static libstdc++/libgcc and static archives for the e* libs;
+# glibc stays dynamic.  No global -static.
+STATICFLAGS = -static-libstdc++ -static-libgcc
+# -L. so -lerpc resolves the locally-built liberpc.a (sibling archives come from
+# the Guix inputs on LIBRARY_PATH).
+LDFLAGS = -L. -O3 $(STATICFLAGS)
 
-# I2P = -L./vendors/i2pd -Wl,-Bstatic -li2pd -Wl,-Bdynamic -lssl -lcrypto -lz -lboost_system -lboost_program_options -lboost_filesystem
+# e* siblings install lib<name>.a; link them statically.  exstd is header-only
+# (no archive), so it is NOT listed here -- its symbols are inline in the .o.
+ELIBS = -Wl,-Bstatic -lerpc -lenet -Wl,-Bdynamic
 
-# i2p.o:
-# 	${CXX} ${CXXFLAGS} -c vendors/enet/src/i2p.cpp -o $@
+# Third-party libs: whole-chain-static.  Headers come from the Guix inputs via
+# CPATH, so only the link flags are needed; each lib is pulled from its static
+# archive (openssl/zlib "static" outputs, libmd-static, util-linux-static) and
+# wrapped in -Bstatic/-Bdynamic so glibc stays dynamic.
+SSL_LIBS  = -Wl,-Bstatic -lssl -lcrypto -Wl,-Bdynamic
+ZLIB_LIBS = -Wl,-Bstatic -lz -Wl,-Bdynamic
+MD4_LIBS  = -Wl,-Bstatic -lmd -Wl,-Bdynamic
+UUID_LIBS = -Wl,-Bstatic -luuid -Wl,-Bdynamic
 
-# vendors/enet/vendors/i2pd/libi2pd.a:
-# 	make -C vendors/i2pd libi2pd.a
+# --- library ---------------------------------------------------------------
 
-rpc-node.o:
-	${CXX} ${CXXFLAGS} -c src/rpc_node.cpp -o $@
+# Library objects that go into lib$(NAME).a.  netvar is header-only, so the
+# sole compiled library translation unit is rpc_node.
+LIBOBJS = rpc-node.o
 
-netvar_server.o:
-	${CXX} ${CXXFLAGS} -c builds/netvar/netvar_server.cpp -o $@
+rpc-node.o: src/rpc_node.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-netvar_client.o:
-	${CXX} ${CXXFLAGS} -c builds/netvar/netvar_client.cpp -o $@
+$(LIBA): $(LIBOBJS)
+	$(AR) rcs $@ $(LIBOBJS)
 
-erpc-test-client.o:
-	${CXX} ${CXXFLAGS} -c builds/test/erpc_test_client.cpp -o $@
+lib: $(LIBA)
 
-erpc-test-server.o:
-	${CXX} ${CXXFLAGS} -c builds/test/erpc_test_server.cpp -o $@
+# --- example / build binaries ---------------------------------------------
 
-erpc-test-client: rpc-node.o erpc-test-client.o # i2p.o vendors/enet/vendors/i2pd/libi2pd.a
-	${CXX} ${CXXFLAGS} $^ ${SSL} ${I2P} ${ZLIB} ${MD4} -o $@
+netvar_server.o: builds/netvar/netvar_server.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-erpc-test-server: rpc-node.o erpc-test-server.o # i2p.o vendors/enet/vendors/i2pd/libi2pd.a
-	${CXX} ${CXXFLAGS} $^ ${SSL} ${I2P} ${ZLIB} ${MD4} -o $@
+netvar_client.o: builds/netvar/netvar_client.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-control.o:
-	${CXX} ${CXXFLAGS} -c builds/c2/control.cpp -o $@
+erpc-test-client.o: builds/test/erpc_test_client.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-control: rpc-node.o control.o
-	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} ${MD4} -o $@
+erpc-test-server.o: builds/test/erpc_test_server.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-implant.o:
-	${CXX} ${CXXFLAGS} -c builds/c2/implant.cpp -o $@
+control.o: builds/c2/control.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-implant: rpc-node.o implant.o
-	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} ${MD4} -o $@
+implant.o: builds/c2/implant.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-netvar_server: netvar_server.o rpc-node.o
-	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} ${MD4} ${UUID} -o $@
+erpc-test-client: erpc-test-client.o $(LIBA)
+	$(CXX) $(CXXFLAGS) $< $(LDFLAGS) $(ELIBS) $(SSL_LIBS) $(ZLIB_LIBS) $(MD4_LIBS) -o $@
 
-netvar_client: netvar_client.o rpc-node.o
-	${CXX} ${CXXFLAGS} $^ ${SSL} ${ZLIB} ${MD4} ${UUID} -o $@
+erpc-test-server: erpc-test-server.o $(LIBA)
+	$(CXX) $(CXXFLAGS) $< $(LDFLAGS) $(ELIBS) $(SSL_LIBS) $(ZLIB_LIBS) $(MD4_LIBS) -o $@
 
+control: control.o $(LIBA)
+	$(CXX) $(CXXFLAGS) $< $(LDFLAGS) $(ELIBS) $(SSL_LIBS) $(ZLIB_LIBS) $(MD4_LIBS) -o $@
+
+implant: implant.o $(LIBA)
+	$(CXX) $(CXXFLAGS) $< $(LDFLAGS) $(ELIBS) $(SSL_LIBS) $(ZLIB_LIBS) $(MD4_LIBS) -o $@
+
+netvar_server: netvar_server.o $(LIBA)
+	$(CXX) $(CXXFLAGS) $< $(LDFLAGS) $(ELIBS) $(SSL_LIBS) $(ZLIB_LIBS) $(MD4_LIBS) $(UUID_LIBS) -o $@
+
+netvar_client: netvar_client.o $(LIBA)
+	$(CXX) $(CXXFLAGS) $< $(LDFLAGS) $(ELIBS) $(SSL_LIBS) $(ZLIB_LIBS) $(MD4_LIBS) $(UUID_LIBS) -o $@
 
 all: erpc-test-client erpc-test-server control implant netvar_server netvar_client
 
+# --- install ---------------------------------------------------------------
+
+PREFIX ?= /usr/local
+DESTDIR ?=
+
+install: $(LIBA)
+	mkdir -p $(DESTDIR)$(PREFIX)/lib
+	mkdir -p $(DESTDIR)$(PREFIX)/include
+	cp $(LIBA) $(DESTDIR)$(PREFIX)/lib/
+	cp -r include/. $(DESTDIR)$(PREFIX)/include/
+
+# --- tooling ---------------------------------------------------------------
+
+clangd:
+	bear -- make all
+
 clean:
-	-rm -f *.o control implant erpc-test-server erpc-test-client netvar_server netvar_client
-	make -C vendors/enet clean
+	-rm -f *.o *.a control implant erpc-test-server erpc-test-client netvar_server netvar_client
+
+
+# Position-independent code: required so each repo's static archive can be
+# bundled into the eengine umbrella shared library (libeengine.so).
+CFLAGS   += -fPIC
+CXXFLAGS += -fPIC
+.PHONY: all lib install clangd clean
